@@ -16,9 +16,11 @@ import QuizPlayer from './QuizPlayer';
 import PerformanceReport from './PerformanceReport';
 import Checkout from './Checkout';
 import { Lecture, Quiz } from './types';
+import { XCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 function AppContent() {
-  const { user, profile, loading, isAdmin } = useAuth();
+  const { user, profile, loading, isAdmin, logout } = useAuth();
   const [view, setView] = useState<ViewType | 'player' | 'quiz-player' | 'report' | 'checkout'>('dashboard');
   const [selectedLecture, setSelectedLecture] = useState<Lecture | null>(null);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
@@ -40,6 +42,21 @@ function AppContent() {
 
   if (!profile) {
     return <Onboarding />;
+  }
+
+  if (profile.status === 'blocked') {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-6 text-center">
+        <div className="space-y-4 max-w-md">
+          <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto">
+            <XCircle className="w-10 h-10 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-black uppercase tracking-tighter">Access Denied</h1>
+          <p className="text-muted-foreground text-sm">Your account has been suspended by the administrator. Please contact support if you believe this is a mistake.</p>
+          <Button variant="outline" onClick={() => logout()} className="uppercase font-bold text-xs">Sign Out</Button>
+        </div>
+      </div>
+    );
   }
 
   // Subscription Check: If not admin and not active subscription, show checkout

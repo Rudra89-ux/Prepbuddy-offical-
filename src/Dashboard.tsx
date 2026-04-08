@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
-import { collection, query, onSnapshot, limit, orderBy } from 'firebase/firestore';
+import { collection, query, onSnapshot, limit, orderBy, where, updateDoc, doc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lecture, Quiz, Course } from './types';
+import { Lecture, Quiz, Course, QuizAttempt } from './types';
 import { 
   BookOpen, 
   Brain, 
@@ -28,11 +28,16 @@ import {
   User,
   Mail,
   Target,
+  Mic,
   Filter,
   Trophy,
   GraduationCap,
   BarChart3,
-  CheckCircle2
+  CheckCircle2,
+  Edit2,
+  Menu,
+  X,
+  RotateCcw
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -58,11 +63,18 @@ export default function Dashboard({
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newName, setNewName] = useState(profile.displayName);
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   useEffect(() => {
     const qL = query(collection(db, 'lectures'), orderBy('createdAt', 'desc'), limit(100));
@@ -88,12 +100,25 @@ export default function Dashboard({
       handleFirestoreError(error, OperationType.LIST, 'courses');
     });
 
+    const qQA = query(
+      collection(db, 'quizAttempts'), 
+      where('userId', '==', profile.uid),
+      orderBy('completedAt', 'desc'), 
+      limit(50)
+    );
+    const unsubQA = onSnapshot(qQA, (snapshot) => {
+      setQuizAttempts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as QuizAttempt)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'quizAttempts');
+    });
+
     return () => {
       unsubL();
       unsubQ();
       unsubC();
+      unsubQA();
     };
-  }, []);
+  }, [profile.uid]);
 
   if (!profile) return null;
 
@@ -102,8 +127,15 @@ export default function Dashboard({
       l.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
       l.topic.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSubject = !selectedSubject || l.subject === selectedSubject;
-    return matchesSearch && matchesSubject;
+    const matchesTopic = !selectedTopic || l.topic === selectedTopic;
+    return matchesSearch && matchesSubject && matchesTopic;
   });
+
+  const availableTopics = Array.from(new Set(
+    lectures
+      .filter(l => !selectedSubject || l.subject === selectedSubject)
+      .map(l => l.topic)
+  )).sort();
 
   const filteredQuizzes = quizzes.filter(q => {
     const matchesSearch = q.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -129,12 +161,52 @@ export default function Dashboard({
     });
   };
 
+  const handleUpdateName = async () => {
+    if (!newName.trim() || !profile) return;
+    setIsSavingName(true);
+    try {
+      await updateDoc(doc(db, 'users', profile.uid), {
+        displayName: newName.trim()
+      });
+      setIsEditingName(false);
+      toast.success("Name updated successfully");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleResetProgress = async () => {
+    if (!profile || isResetting) return;
+    
+    const confirm = window.confirm("Are you sure you want to reset all your lecture progress? This cannot be undone.");
+    if (!confirm) return;
+
+    setIsResetting(true);
+    try {
+      await updateDoc(doc(db, 'users', profile.uid), {
+        completedLectures: []
+      });
+      toast.success("Progress reset successfully");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
+      toast.error("Failed to reset progress");
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const examSubjects = profile.exam === 'JEE' 
+    ? ['Physics', 'Chemistry', 'Maths'] 
+    : ['Physics', 'Chemistry', 'Biology'];
+
   const renderContent = () => {
     switch (currentView) {
       case 'lectures':
         return (
           <section className="space-y-6">
-            <div className="flex flex-col gap-4 mb-6">
+            <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-primary/10 rounded-xl">
                   <BookOpen className="w-5 h-5 text-primary" />
@@ -144,17 +216,96 @@ export default function Dashboard({
                   <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Browse your curriculum</p>
                 </div>
               </div>
-              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                {['Physics', 'Chemistry', 'Maths', 'Biology'].map(sub => (
-                  <Badge 
-                    key={sub}
-                    variant={selectedSubject === sub ? 'default' : 'outline'}
-                    className="cursor-pointer text-[8px] uppercase whitespace-nowrap"
-                    onClick={() => setSelectedSubject(selectedSubject === sub ? null : sub)}
-                  >
-                    {sub}
-                  </Badge>
-                ))}
+              
+              <div className="relative">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="rounded-xl gap-2 h-9 border-primary/20 bg-primary/5 text-primary"
+                  onClick={() => setIsFilterOpen(!isFilterOpen)}
+                >
+                  <Menu className="w-4 h-4" />
+                  <span className="text-[10px] uppercase font-bold">Filters</span>
+                </Button>
+
+                <AnimatePresence>
+                  {isFilterOpen && (
+                    <>
+                      <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsFilterOpen(false)}
+                        className="fixed inset-0 z-[100]"
+                      />
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                        className="absolute right-0 mt-2 w-64 bg-background border border-border rounded-2xl shadow-2xl z-[101] p-4 space-y-4"
+                      >
+                        <div className="space-y-3">
+                          <Label className="text-[9px] uppercase font-black tracking-widest text-muted-foreground ml-1">Subject</Label>
+                          <div className="flex flex-wrap gap-2">
+                            {examSubjects.map(sub => (
+                              <Badge 
+                                key={sub}
+                                variant={selectedSubject === sub ? 'default' : 'outline'}
+                                className="cursor-pointer text-[8px] uppercase px-2 py-0.5"
+                                onClick={() => {
+                                  setSelectedSubject(selectedSubject === sub ? null : sub);
+                                  setSelectedTopic(null);
+                                }}
+                              >
+                                {sub}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+
+                        {availableTopics.length > 0 && (
+                          <div className="space-y-3">
+                            <Label className="text-[9px] uppercase font-black tracking-widest text-muted-foreground ml-1">Topic</Label>
+                            <ScrollArea className="h-40 -mx-1 px-1">
+                              <div className="flex flex-wrap gap-2">
+                                {availableTopics.map(topic => (
+                                  <Badge 
+                                    key={topic}
+                                    variant={selectedTopic === topic ? 'default' : 'outline'}
+                                    className="cursor-pointer text-[8px] uppercase px-2 py-0.5"
+                                    onClick={() => setSelectedTopic(selectedTopic === topic ? null : topic)}
+                                  >
+                                    {topic}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </ScrollArea>
+                          </div>
+                        )}
+
+                        <div className="pt-3 border-t border-border flex gap-2">
+                          <Button 
+                            variant="ghost" 
+                            className="flex-1 h-8 text-[9px] uppercase font-bold"
+                            onClick={() => {
+                              setSelectedSubject(null);
+                              setSelectedTopic(null);
+                              setIsFilterOpen(false);
+                            }}
+                          >
+                            Clear
+                          </Button>
+                          <Button 
+                            className="flex-1 h-8 text-[9px] uppercase font-bold"
+                            onClick={() => setIsFilterOpen(false)}
+                          >
+                            Apply
+                          </Button>
+                        </div>
+                      </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
 
@@ -202,18 +353,6 @@ export default function Dashboard({
                   <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Test your knowledge</p>
                 </div>
               </div>
-              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                {['Physics', 'Chemistry', 'Maths', 'Biology'].map(sub => (
-                  <Badge 
-                    key={sub}
-                    variant={selectedSubject === sub ? 'default' : 'outline'}
-                    className="cursor-pointer text-[8px] uppercase whitespace-nowrap"
-                    onClick={() => setSelectedSubject(selectedSubject === sub ? null : sub)}
-                  >
-                    {sub}
-                  </Badge>
-                ))}
-              </div>
             </div>
 
             <div className="relative mb-6">
@@ -230,9 +369,18 @@ export default function Dashboard({
               {loading ? (
                 <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary/50" /></div>
               ) : filteredQuizzes.length > 0 ? (
-                filteredQuizzes.map(quiz => (
-                  <QuizItem key={quiz.id} quiz={quiz} onClick={() => onSelectQuiz(quiz)} />
-                ))
+                filteredQuizzes.map(quiz => {
+                  const attempt = quizAttempts.find(a => a.quizId === quiz.id);
+                  return (
+                    <QuizItem 
+                      key={quiz.id} 
+                      quiz={quiz} 
+                      onClick={() => onSelectQuiz(quiz)} 
+                      isAttempted={!!attempt}
+                      score={attempt?.score}
+                    />
+                  );
+                })
               ) : (
                 <div className="p-12 text-center border border-dashed border-border rounded-3xl">
                   <p className="text-xs text-muted-foreground uppercase tracking-widest">No quizzes found</p>
@@ -256,7 +404,7 @@ export default function Dashboard({
                 </div>
               </div>
               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                {['Physics', 'Chemistry', 'Maths', 'Biology'].map(sub => (
+                {examSubjects.map(sub => (
                   <Badge 
                     key={sub}
                     variant={selectedSubject === sub ? 'default' : 'outline'}
@@ -297,32 +445,58 @@ export default function Dashboard({
 
       case 'history':
         return (
-          <section className="space-y-4">
-            <div className="flex items-center gap-2 mb-6">
-              <div className="p-2 bg-blue-500/10 rounded-xl">
-                <History className="w-5 h-5 text-blue-500" />
+          <section className="space-y-8">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-blue-500/10 rounded-xl">
+                  <History className="w-5 h-5 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest">Lecture History</h3>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Your completed lessons</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-widest">Study History</h3>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Your completed lectures</p>
+              
+              <div className="space-y-3">
+                {completedLectures.length > 0 ? (
+                  completedLectures.map(lecture => (
+                    <LectureItem 
+                      key={lecture.id} 
+                      lecture={lecture} 
+                      onClick={() => onSelectLecture(lecture)} 
+                      isCompleted={true}
+                    />
+                  ))
+                ) : (
+                  <div className="p-12 text-center border border-dashed border-border rounded-3xl">
+                    <p className="text-xs text-muted-foreground uppercase tracking-widest">No lectures completed yet</p>
+                  </div>
+                )}
               </div>
             </div>
-            
-            <div className="space-y-3">
-              {completedLectures.length > 0 ? (
-                completedLectures.map(lecture => (
-                  <LectureItem 
-                    key={lecture.id} 
-                    lecture={lecture} 
-                    onClick={() => onSelectLecture(lecture)} 
-                    isCompleted={true}
-                  />
-                ))
-              ) : (
-                <div className="p-12 text-center border border-dashed border-border rounded-3xl">
-                  <p className="text-xs text-muted-foreground uppercase tracking-widest">No history yet</p>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-purple-500/10 rounded-xl">
+                  <Trophy className="w-5 h-5 text-purple-500" />
                 </div>
-              )}
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest">Quiz History</h3>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Your recent attempts</p>
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                {quizAttempts.length > 0 ? (
+                  quizAttempts.map(attempt => (
+                    <QuizAttemptItem key={attempt.id} attempt={attempt} />
+                  ))
+                ) : (
+                  <div className="p-12 text-center border border-dashed border-border rounded-3xl">
+                    <p className="text-xs text-muted-foreground uppercase tracking-widest">No quizzes attempted yet</p>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         );
@@ -345,13 +519,33 @@ export default function Dashboard({
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-2xl bg-secondary border border-border flex items-center justify-center overflow-hidden">
                     {profile.photoURL ? (
-                      <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                      <img src={profile.photoURL || undefined} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-2xl font-black text-primary/50">{profile.displayName[0]}</span>
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <h4 className="font-bold truncate">{profile.displayName}</h4>
+                  <div className="flex-1 min-w-0">
+                    {isEditingName ? (
+                      <div className="flex gap-2">
+                        <Input 
+                          value={newName} 
+                          onChange={e => setNewName(e.target.value)}
+                          className="h-8 text-sm"
+                          autoFocus
+                        />
+                        <Button size="sm" className="h-8" onClick={handleUpdateName} disabled={isSavingName}>
+                          {isSavingName ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Save'}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-8" onClick={() => setIsEditingName(false)}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold truncate">{profile.displayName}</h4>
+                        <Button variant="ghost" size="icon" className="w-6 h-6" onClick={() => setIsEditingName(true)}>
+                          <Edit2 className="w-3 h-3 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    )}
                     <p className="text-xs text-muted-foreground truncate">{profile.email}</p>
                   </div>
                 </div>
@@ -373,6 +567,11 @@ export default function Dashboard({
                   </div>
                 </div>
               </div>
+
+              <Button variant="outline" className="w-full h-12 rounded-2xl border-orange-500/20 text-orange-500 hover:bg-orange-500/10" onClick={handleResetProgress} disabled={isResetting}>
+                {isResetting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <RotateCcw className="w-4 h-4 mr-2" />}
+                Reset Progress
+              </Button>
 
               <Button variant="outline" className="w-full h-12 rounded-2xl border-red-500/20 text-red-500 hover:bg-red-500/10" onClick={logout}>
                 <LogOut className="w-4 h-4 mr-2" />
@@ -401,15 +600,15 @@ export default function Dashboard({
             <section className="grid grid-cols-2 gap-4">
               <StatCard 
                 icon={<BookOpen className="w-4 h-4 text-primary" />} 
-                label="Lectures" 
-                value={lectures.length} 
-                onClick={() => onViewChange('lectures')}
+                label="Completed" 
+                value={profile.completedLectures?.length || 0} 
+                onClick={() => onViewChange('history')}
               />
               <StatCard 
-                icon={<BarChart3 className="w-4 h-4 text-blue-500" />} 
-                label="Performance" 
-                value="View" 
-                onClick={onOpenReport}
+                icon={<Trophy className="w-4 h-4 text-blue-500" />} 
+                label="Quiz Attempts" 
+                value={quizAttempts.length} 
+                onClick={() => onViewChange('history')}
               />
             </section>
 
@@ -481,7 +680,7 @@ export default function Dashboard({
         <div className="flex items-center gap-2 sm:gap-3 cursor-pointer min-w-0" onClick={() => onViewChange('settings')}>
           <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-secondary border border-border flex items-center justify-center overflow-hidden flex-shrink-0">
             {profile.photoURL ? (
-              <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" />
+              <img src={profile.photoURL || undefined} alt="Profile" className="w-full h-full object-cover" />
             ) : (
               <span className="text-sm sm:text-lg font-black text-primary/50">{profile.displayName[0]}</span>
             )}
@@ -533,14 +732,6 @@ export default function Dashboard({
             active={currentView === 'lectures'} 
             onClick={() => onViewChange('lectures')}
           />
-          {(profile.subscriptionStatus === 'active' || isAdmin) && (
-            <NavIcon 
-              icon={<GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />} 
-              label="Courses" 
-              active={currentView === 'courses'} 
-              onClick={() => onViewChange('courses')}
-            />
-          )}
           <NavIcon 
             icon={<Brain className="w-4 h-4 sm:w-5 sm:h-5" />} 
             label="Quizzes" 
@@ -583,7 +774,7 @@ function LectureItem({ lecture, onClick, isCompleted }: { lecture: Lecture, onCl
             <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
           </motion.div>
         ) : (
-          <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+          lecture.type === 'audio' ? <Mic className="w-4 h-4 sm:w-5 sm:h-5" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5" />
         )}
       </div>
       <div className="flex-1 min-w-0">
@@ -599,27 +790,66 @@ function LectureItem({ lecture, onClick, isCompleted }: { lecture: Lecture, onCl
   );
 }
 
-function QuizItem({ quiz, onClick }: { quiz: Quiz, onClick: () => void }) {
+function QuizItem({ quiz, onClick, isAttempted, score }: { quiz: Quiz, onClick: () => void, isAttempted?: boolean, score?: number }) {
   return (
     <motion.div 
-      whileHover={{ scale: 1.01, x: 4 }}
-      whileTap={{ scale: 0.99 }}
-      onClick={onClick}
-      className="p-3 sm:p-4 rounded-2xl border border-border bg-secondary/20 hover:bg-secondary/40 transition-all cursor-pointer flex items-center gap-3 sm:gap-4 group"
+      whileHover={!isAttempted ? { scale: 1.01, x: 4 } : {}}
+      whileTap={!isAttempted ? { scale: 0.99 } : {}}
+      onClick={!isAttempted ? onClick : undefined}
+      className={`p-3 sm:p-4 rounded-2xl border border-border transition-all flex items-center gap-3 sm:gap-4 group ${isAttempted ? 'bg-secondary/10 opacity-80 cursor-default' : 'bg-secondary/20 hover:bg-secondary/40 cursor-pointer'}`}
     >
-      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-blue-500/10 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors flex-shrink-0">
-        <Trophy className="w-4 h-4 sm:w-5 sm:h-5" />
+      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${isAttempted ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 group-hover:bg-blue-500 group-hover:text-white'}`}>
+        {isAttempted ? <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" /> : <Brain className="w-4 h-4 sm:w-5 sm:h-5" />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex gap-1 sm:gap-2 mb-1">
-          <Badge variant="secondary" className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{quiz.subject}</Badge>
-          <Badge variant="outline" className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{quiz.questions.length} Qs</Badge>
+        <div className="flex justify-between items-start mb-1">
+          <div className="flex gap-1 sm:gap-2">
+            <Badge variant="secondary" className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{quiz.subject}</Badge>
+            <Badge variant="outline" className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{quiz.questions.length} Qs</Badge>
+          </div>
+          {isAttempted && <Badge variant="default" className="bg-green-500 text-[7px] sm:text-[8px] uppercase px-1.5 py-0 h-4">Completed</Badge>}
         </div>
         <h4 className="text-xs sm:text-sm font-bold truncate">{quiz.title}</h4>
-        <p className="text-[9px] sm:text-[10px] text-muted-foreground truncate">{quiz.topic}</p>
+        <div className="flex justify-between items-center">
+          <p className="text-[9px] sm:text-[10px] text-muted-foreground truncate">{quiz.topic}</p>
+          {isAttempted && score !== undefined && (
+            <span className="text-[10px] font-black text-green-500">SCORE: {score}/{quiz.questions.length}</span>
+          )}
+        </div>
       </div>
-      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+      {!isAttempted && <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />}
     </motion.div>
+  );
+}
+
+function QuizAttemptItem({ attempt }: { attempt: QuizAttempt }) {
+  const percentage = Math.round((attempt.score / attempt.totalQuestions) * 100);
+  const date = attempt.completedAt?.toDate?.() ? attempt.completedAt.toDate().toLocaleDateString() : 'Recent';
+
+  return (
+    <div className="p-3 sm:p-4 rounded-2xl border border-border bg-secondary/10 flex items-center gap-3 sm:gap-4">
+      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${percentage >= 70 ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'}`}>
+        <Trophy className="w-5 h-5" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex justify-between items-start mb-1">
+          <div className="flex gap-1 sm:gap-2">
+            <Badge variant="secondary" className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{attempt.subject}</Badge>
+            <Badge variant="outline" className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{attempt.topic}</Badge>
+          </div>
+          <span className="text-[8px] text-muted-foreground uppercase font-bold">{date}</span>
+        </div>
+        <div className="flex justify-between items-end">
+          <div>
+            <h4 className="text-xs font-bold">Quiz Attempt</h4>
+            <p className="text-[10px] text-muted-foreground">{attempt.score}/{attempt.totalQuestions} Correct</p>
+          </div>
+          <div className="text-right">
+            <span className={`text-sm font-black tracking-tighter ${percentage >= 70 ? 'text-green-500' : 'text-orange-500'}`}>{percentage}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

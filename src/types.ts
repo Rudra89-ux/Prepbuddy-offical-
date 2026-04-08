@@ -10,6 +10,7 @@ export interface UserProfile {
   exam: Exam;
   isSubscribed: boolean;
   subscriptionStatus?: 'none' | 'pending' | 'active';
+  status?: 'active' | 'blocked';
   role?: string;
   createdAt: any;
   lastActive: any;
@@ -34,7 +35,9 @@ export interface Lecture {
   description: string;
   subject: Subject;
   topic: string;
-  videoUrl: string; // Drive link or similar
+  videoUrl?: string;
+  audioUrl?: string;
+  type: 'video' | 'audio';
   createdAt: any;
 }
 

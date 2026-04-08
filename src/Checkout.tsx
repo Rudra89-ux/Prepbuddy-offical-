@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { db } from './lib/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle2, CreditCard, ShieldCheck, Zap, Loader2 } from 'lucide-react';
@@ -11,6 +11,22 @@ import { motion } from 'motion/react';
 export default function Checkout() {
   const { profile, logout } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [price, setPrice] = useState('4,999');
+
+  useEffect(() => {
+    const fetchPrice = async () => {
+      try {
+        const docRef = doc(db, 'config', 'subscription');
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setPrice(docSnap.data().price);
+        }
+      } catch (error) {
+        console.error("Error fetching price:", error);
+      }
+    };
+    fetchPrice();
+  }, []);
 
   const handlePurchase = async () => {
     if (!profile) return;
@@ -67,14 +83,13 @@ export default function Checkout() {
           </div>
           
           <CardHeader className="text-center pb-2">
-            <CardTitle className="text-5xl font-black tracking-tighter italic">₹4,999<span className="text-sm font-normal not-italic text-muted-foreground">/year</span></CardTitle>
+            <CardTitle className="text-5xl font-black tracking-tighter italic">₹{price}<span className="text-sm font-normal not-italic text-muted-foreground">/year</span></CardTitle>
           </CardHeader>
 
           <CardContent className="space-y-6">
             <div className="space-y-3">
               <Feature item="Full Access to All Courses" />
-              <Feature item="Unlimited AI Doubt Solving" />
-              <Feature item="Personalized AI Study Mentor" />
+              <Feature item="Standard Study Mentor Support" />
               <Feature item="Detailed Performance Reports" />
               <Feature item="Elite Question Bank (10,000+ Qs)" />
               <Feature item="Priority Admin Support" />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from './AuthContext';
 import { db, handleFirestoreError, OperationType, serverTimestamp } from './lib/firebase';
-import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, query, orderBy, limit, deleteDoc, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap } from 'lucide-react';
+import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap, Settings, XCircle, Mic } from 'lucide-react';
 import { toast } from 'sonner';
 import { Question, Subject, QuestionType, Lecture, Quiz, Course, UserProfile } from './types';
 
@@ -21,6 +21,9 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('lectures');
+  const [subPrice, setSubPrice] = useState('999');
+  const [priceLoading, setPriceLoading] = useState(false);
   
   // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -44,7 +47,9 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     description: '',
     subject: 'Physics' as Subject,
     topic: '',
-    videoUrl: ''
+    videoUrl: '',
+    audioUrl: '',
+    type: 'video' as 'video' | 'audio'
   });
 
   // New Quiz Form
@@ -71,7 +76,33 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     fetchQuizzes();
     fetchCourses();
     fetchUsers();
+    fetchConfig();
   }, []);
+
+  const fetchConfig = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'config'));
+      const priceDoc = snapshot.docs.find(d => d.id === 'subscription');
+      if (priceDoc) {
+        setSubPrice(priceDoc.data().price || '999');
+      }
+    } catch (error) {
+      console.error("Fetch config error:", error);
+    }
+  };
+
+  const handleUpdatePrice = async () => {
+    setPriceLoading(true);
+    try {
+      await setDoc(doc(db, 'config', 'subscription'), { price: subPrice });
+      toast.success("Subscription price updated");
+    } catch (error) {
+      console.error("Update price error:", error);
+      toast.error("Failed to update price");
+    } finally {
+      setPriceLoading(false);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -195,7 +226,9 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       description: '',
       subject: 'Physics',
       topic: '',
-      videoUrl: ''
+      videoUrl: '',
+      audioUrl: '',
+      type: 'video'
     });
     setEditingId(null);
     setEditingType(null);
@@ -289,7 +322,6 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteQuestion = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this question?")) return;
     try {
       await deleteDoc(doc(db, 'questions', id));
       toast.success("Question deleted");
@@ -300,7 +332,6 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteLecture = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this lecture?")) return;
     try {
       await deleteDoc(doc(db, 'lectures', id));
       toast.success("Lecture deleted");
@@ -311,7 +342,6 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteQuiz = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this quiz?")) return;
     try {
       await deleteDoc(doc(db, 'quizzes', id));
       toast.success("Quiz deleted");
@@ -322,7 +352,6 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteCourse = async (id: string) => {
-    if (!window.confirm("Are you sure you want to delete this course?")) return;
     try {
       await deleteDoc(doc(db, 'courses', id));
       toast.success("Course deleted");
@@ -355,7 +384,9 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       description: l.description,
       subject: l.subject,
       topic: l.topic,
-      videoUrl: l.videoUrl
+      videoUrl: l.videoUrl || '',
+      audioUrl: l.audioUrl || '',
+      type: l.type || 'video'
     });
   };
 
@@ -436,6 +467,39 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     }
   };
 
+  const handleToggleBlock = async (userId: string, currentStatus: string | undefined) => {
+    try {
+      const isBlocked = currentStatus === 'blocked';
+      await updateDoc(doc(db, 'users', userId), {
+        status: isBlocked ? 'active' : 'blocked'
+      });
+      toast.success(isBlocked ? "User unblocked" : "User blocked");
+      fetchUsers();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${userId}`);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    try {
+      await deleteDoc(doc(db, 'users', userId));
+      toast.success("User deleted successfully");
+      fetchUsers();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `users/${userId}`);
+    }
+  };
+
+  const handleDeleteConfig = async (configId: string) => {
+    try {
+      await deleteDoc(doc(db, 'config', configId));
+      toast.success("Configuration deleted");
+      fetchConfig();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `config/${configId}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="p-6 border-b border-border bg-secondary/30 backdrop-blur-md flex justify-between items-center">
@@ -452,71 +516,77 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       </header>
 
       <main className="flex-1 p-4 sm:p-6 overflow-hidden">
-        <Tabs defaultValue="lectures" className="h-full flex flex-col">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
+          <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 mb-6">
             <Button 
-              variant="outline" 
+              variant={activeTab === 'lectures' ? 'default' : 'outline'}
               className="h-16 flex flex-col gap-1 border-primary/20 bg-primary/5 hover:bg-primary/10"
-              onClick={() => {
-                const trigger = document.querySelector('[value="lectures"]') as HTMLElement;
-                trigger?.click();
-              }}
+              onClick={() => setActiveTab('lectures')}
             >
               <BookOpen className="w-5 h-5 text-primary" />
               <span className="text-[10px] uppercase font-bold">Lectures</span>
             </Button>
             <Button 
-              variant="outline" 
-              className="h-16 flex flex-col gap-1 border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10"
+              variant={activeTab === 'discussions' ? 'default' : 'outline'}
+              className="h-16 flex flex-col gap-1 border-pink-500/20 bg-pink-500/5 hover:bg-pink-500/10"
               onClick={() => {
-                const trigger = document.querySelector('[value="quizzes"]') as HTMLElement;
-                trigger?.click();
+                setActiveTab('discussions');
+                setNewL({ ...newL, type: 'audio' });
               }}
+            >
+              <Mic className="w-5 h-5 text-pink-500" />
+              <span className="text-[10px] uppercase font-bold text-center">Topic Discussion</span>
+            </Button>
+            <Button 
+              variant={activeTab === 'quizzes' ? 'default' : 'outline'}
+              className="h-16 flex flex-col gap-1 border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10"
+              onClick={() => setActiveTab('quizzes')}
             >
               <Brain className="w-5 h-5 text-blue-500" />
               <span className="text-[10px] uppercase font-bold">Quizzes</span>
             </Button>
             <Button 
-              variant="outline" 
+              variant={activeTab === 'courses' ? 'default' : 'outline'}
               className="h-16 flex flex-col gap-1 border-purple-500/20 bg-purple-500/5 hover:bg-purple-500/10"
-              onClick={() => {
-                const trigger = document.querySelector('[value="courses"]') as HTMLElement;
-                trigger?.click();
-              }}
+              onClick={() => setActiveTab('courses')}
             >
               <GraduationCap className="w-5 h-5 text-purple-500" />
               <span className="text-[10px] uppercase font-bold">Courses</span>
             </Button>
             <Button 
-              variant="outline" 
+              variant={activeTab === 'questions' ? 'default' : 'outline'}
               className="h-16 flex flex-col gap-1 border-orange-500/20 bg-orange-500/5 hover:bg-orange-500/10"
-              onClick={() => {
-                const trigger = document.querySelector('[value="questions"]') as HTMLElement;
-                trigger?.click();
-              }}
+              onClick={() => setActiveTab('questions')}
             >
               <Plus className="w-5 h-5 text-orange-500" />
               <span className="text-[10px] uppercase font-bold">Questions</span>
             </Button>
             <Button 
-              variant="outline" 
+              variant={activeTab === 'users' ? 'default' : 'outline'}
               className="h-16 flex flex-col gap-1 border-green-500/20 bg-green-500/5 hover:bg-green-500/10"
-              onClick={() => {
-                const trigger = document.querySelector('[value="users"]') as HTMLElement;
-                trigger?.click();
-              }}
+              onClick={() => setActiveTab('users')}
             >
               <Users className="w-5 h-5 text-green-500" />
               <span className="text-[10px] uppercase font-bold">Users</span>
+            </Button>
+            <Button 
+              variant={activeTab === 'settings' ? 'default' : 'outline'}
+              className="h-16 flex flex-col gap-1 border-gray-500/20 bg-gray-500/5 hover:bg-gray-500/10"
+              onClick={() => setActiveTab('settings')}
+            >
+              <Settings className="w-5 h-5 text-gray-500" />
+              <span className="text-[10px] uppercase font-bold">Settings</span>
             </Button>
           </div>
 
           <TabsList className="hidden">
             <TabsTrigger value="lectures">Lectures</TabsTrigger>
+            <TabsTrigger value="discussions">Topic Discussion</TabsTrigger>
             <TabsTrigger value="quizzes">Quizzes</TabsTrigger>
             <TabsTrigger value="courses">Courses</TabsTrigger>
             <TabsTrigger value="questions">Questions</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
           <TabsContent value="lectures" className="flex-1 overflow-hidden">
@@ -574,13 +644,14 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
               </Card>
 
               <Card className="premium-card lg:col-span-2 flex flex-col overflow-hidden">
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="text-sm uppercase tracking-widest">Existing Lectures</CardTitle>
+                  <Badge variant="secondary">{lectures.filter(l => l.type === 'video' || !l.type).length} Video Files</Badge>
                 </CardHeader>
                 <CardContent className="flex-1 overflow-hidden p-0">
                   <ScrollArea className="h-[600px]">
                     <div className="p-4 space-y-4">
-                      {lectures.map(l => (
+                      {lectures.filter(l => l.type === 'video' || !l.type).map(l => (
                         <div key={l.id} className="p-4 rounded-lg border border-border bg-secondary/20 flex justify-between items-start group">
                           <div className="space-y-1">
                             <div className="flex gap-2">
@@ -595,14 +666,139 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                               variant="ghost" 
                               size="icon" 
                               className="text-muted-foreground hover:text-primary"
-                              onClick={() => startEditLecture(l)}
+                              onClick={() => {
+                                setEditingId(l.id);
+                                setEditingType('lecture');
+                                setNewL({
+                                  title: l.title,
+                                  description: l.description,
+                                  subject: l.subject,
+                                  topic: l.topic,
+                                  videoUrl: l.videoUrl || '',
+                                  audioUrl: l.audioUrl || '',
+                                  type: l.type || 'video'
+                                });
+                                setActiveTab('lectures');
+                              }}
                             >
                               <Edit2 className="w-4 h-4" />
                             </Button>
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="text-muted-foreground hover:text-red-500"
+                              className="text-black hover:bg-black/10"
+                              onClick={() => handleDeleteLecture(l.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="discussions" className="flex-1 overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+              <Card className="premium-card h-fit">
+                <CardHeader>
+                  <CardTitle className="text-sm uppercase tracking-widest">{editingId && editingType === 'lecture' ? 'Edit Discussion' : 'Add Topic Discussion'}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAddLecture} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Title</Label>
+                      <Input value={newL.title} onChange={e => setNewL({...newL, title: e.target.value, type: 'audio'})} placeholder="Discussion Title" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Subject</Label>
+                      <select 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                        value={newL.subject}
+                        onChange={e => setNewL({...newL, subject: e.target.value as Subject})}
+                      >
+                        <option>Physics</option>
+                        <option>Chemistry</option>
+                        <option>Maths</option>
+                        <option>Biology</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Topic</Label>
+                      <Input value={newL.topic} onChange={e => setNewL({...newL, topic: e.target.value})} placeholder="Topic Name" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Audio URL</Label>
+                      <Input value={newL.audioUrl} onChange={e => setNewL({...newL, audioUrl: e.target.value, type: 'audio'})} placeholder="Direct Audio Link" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Description</Label>
+                      <textarea 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm min-h-[100px]"
+                        value={newL.description}
+                        onChange={e => setNewL({...newL, description: e.target.value})}
+                        placeholder="Discussion Description"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="submit" disabled={loading} className="flex-1 font-bold uppercase text-xs">
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingId ? 'Update' : 'Upload Audio')}
+                      </Button>
+                      {editingId && (
+                        <Button type="button" variant="outline" onClick={resetLectureForm} className="font-bold uppercase text-xs">Cancel</Button>
+                      )}
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card className="premium-card lg:col-span-2 flex flex-col overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm uppercase tracking-widest">Existing Discussions</CardTitle>
+                  <Badge variant="secondary">{lectures.filter(l => l.type === 'audio').length} Audio Files</Badge>
+                </CardHeader>
+                <CardContent className="flex-1 overflow-hidden p-0">
+                  <ScrollArea className="h-[600px]">
+                    <div className="p-4 space-y-4">
+                      {lectures.filter(l => l.type === 'audio').map(l => (
+                        <div key={l.id} className="p-4 rounded-lg border border-border bg-secondary/20 flex justify-between items-start group">
+                          <div className="space-y-1">
+                            <div className="flex gap-2">
+                              <Badge variant="secondary" className="text-[8px] uppercase">{l.subject}</Badge>
+                              <Badge variant="outline" className="text-[8px] uppercase">{l.topic}</Badge>
+                            </div>
+                            <p className="text-sm font-bold">{l.title}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-1">{l.description}</p>
+                          </div>
+                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-muted-foreground hover:text-primary"
+                              onClick={() => {
+                                setEditingId(l.id);
+                                setEditingType('lecture');
+                                setNewL({
+                                  title: l.title,
+                                  description: l.description,
+                                  subject: l.subject,
+                                  topic: l.topic,
+                                  videoUrl: l.videoUrl || '',
+                                  audioUrl: l.audioUrl || '',
+                                  type: l.type
+                                });
+                                setActiveTab('discussions');
+                              }}
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-black hover:bg-black/10"
                               onClick={() => handleDeleteLecture(l.id)}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -704,7 +900,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="text-muted-foreground hover:text-red-500"
+                              className="text-black hover:bg-black/10"
                               onClick={() => handleDeleteQuiz(q.id)}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -817,7 +1013,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="text-muted-foreground hover:text-red-500"
+                              className="text-black hover:bg-black/10"
                               onClick={() => handleDeleteCourse(c.id)}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -929,7 +1125,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="text-muted-foreground hover:text-red-500"
+                              className="text-black hover:bg-black/10"
                               onClick={() => handleDeleteQuestion(q.id)}
                             >
                               <Trash2 className="w-4 h-4" />
@@ -972,11 +1168,60 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                           {u.subscriptionStatus === 'active' && (
                             <Button size="sm" variant="outline" className="flex-1 sm:flex-none text-[10px] uppercase font-bold" onClick={() => handleRejectSubscription(u.uid)}>Revoke</Button>
                           )}
+                          <Button 
+                            size="sm" 
+                            variant={u.status === 'blocked' ? 'default' : 'outline'} 
+                            className={`flex-1 sm:flex-none text-[10px] uppercase font-bold ${u.status === 'blocked' ? 'bg-red-600 hover:bg-red-700' : 'border-red-500 text-red-500 hover:bg-red-50'}`}
+                            onClick={() => handleToggleBlock(u.uid, u.status)}
+                          >
+                            {u.status === 'blocked' ? 'Unblock' : 'Block'}
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="flex-1 sm:flex-none text-black hover:bg-black/10"
+                            onClick={() => handleDeleteUser(u.uid)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     ))}
                   </div>
                 </ScrollArea>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          <TabsContent value="settings" className="flex-1 overflow-hidden">
+            <Card className="premium-card h-fit max-w-md mx-auto">
+              <CardHeader>
+                <CardTitle className="text-sm uppercase tracking-widest">App Settings</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase font-bold">Yearly Subscription Price (₹)</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      type="number" 
+                      value={subPrice} 
+                      onChange={e => setSubPrice(e.target.value)} 
+                      placeholder="e.g. 999"
+                      className="text-lg font-bold"
+                    />
+                    <Button onClick={handleUpdatePrice} disabled={priceLoading}>
+                      {priceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update'}
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className="border-black text-black hover:bg-black/10"
+                      onClick={() => handleDeleteConfig('subscription')}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground uppercase">This price will be shown to users on the checkout page.</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

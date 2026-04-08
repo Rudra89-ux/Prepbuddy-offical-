@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Play, Info, Calendar, CheckCircle2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Play, Info, Calendar, CheckCircle2, Loader2, Mic, Music } from 'lucide-react';
 import { Lecture } from './types';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from './AuthContext';
@@ -14,10 +14,17 @@ export default function LecturePlayer({ lecture, onBack }: { lecture: Lecture, o
 
   const isCompleted = profile?.completedLectures?.includes(lecture.id);
 
-  // Convert Drive link to embed link if necessary
-  const getEmbedUrl = (url: string) => {
+  // Convert Drive link to embed or direct stream link if necessary
+  const getMediaUrl = (url: string | undefined | null) => {
+    if (!url) return undefined;
     if (url.includes('drive.google.com')) {
-      return url.replace('/view', '/preview').replace('?usp=sharing', '');
+      // Extract ID from various Drive URL formats
+      const match = url.match(/[-\w]{25,}/);
+      const id = match ? match[0] : null;
+      if (id) {
+        // For both video and audio, the preview link is the most reliable in an iframe
+        return `https://drive.google.com/file/d/${id}/preview`;
+      }
     }
     return url;
   };
@@ -40,6 +47,8 @@ export default function LecturePlayer({ lecture, onBack }: { lecture: Lecture, o
     }
   };
 
+  const isDriveLink = lecture.type === 'audio' ? lecture.audioUrl?.includes('drive.google.com') : lecture.videoUrl?.includes('drive.google.com');
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <header className="p-4 border-b border-border flex items-center gap-4 bg-secondary/30 backdrop-blur-md sticky top-0 z-50">
@@ -53,14 +62,47 @@ export default function LecturePlayer({ lecture, onBack }: { lecture: Lecture, o
       </header>
 
       <main className="flex-1 p-6 space-y-6">
-        <div className="aspect-video w-full bg-black rounded-2xl overflow-hidden border border-border shadow-2xl">
-          <iframe
-            src={getEmbedUrl(lecture.videoUrl)}
-            className="w-full h-full"
-            allow="autoplay"
-            allowFullScreen
-          />
-        </div>
+        {lecture.type === 'audio' ? (
+          <div className="space-y-6">
+            <div className="w-full bg-secondary/20 rounded-3xl p-8 flex flex-col items-center justify-center gap-6 border border-border shadow-xl">
+              <div className="w-24 h-24 bg-primary/10 rounded-full flex items-center justify-center">
+                <Mic className="w-12 h-12 text-primary" />
+              </div>
+              <div className="w-full space-y-4">
+                <div className="flex items-center gap-2 justify-center text-muted-foreground">
+                  <Music className="w-4 h-4" />
+                  <span className="text-[10px] uppercase font-bold tracking-widest">Audio Discussion</span>
+                </div>
+                {isDriveLink ? (
+                  <div className="w-full h-20 rounded-xl overflow-hidden border border-border bg-black">
+                    <iframe
+                      src={getMediaUrl(lecture.audioUrl)}
+                      className="w-full h-full"
+                      allow="autoplay"
+                    />
+                  </div>
+                ) : (
+                  <audio 
+                    controls 
+                    className="w-full h-12"
+                    src={getMediaUrl(lecture.audioUrl)}
+                  >
+                    Your browser does not support the audio element.
+                  </audio>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="aspect-video w-full bg-black rounded-2xl overflow-hidden border border-border shadow-2xl">
+            <iframe
+              src={getMediaUrl(lecture.videoUrl)}
+              className="w-full h-full"
+              allow="autoplay"
+              allowFullScreen
+            />
+          </div>
+        )}
 
         <div className="space-y-4">
           <div className="flex justify-between items-start">

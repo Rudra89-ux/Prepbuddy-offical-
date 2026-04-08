@@ -105,16 +105,17 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data);
       allow update: if (isOwner(userId) && isValidUser(request.resource.data) && emailUnchanged() && uidUnchanged()) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /lectures/{lectureId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /quizzes/{quizId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /quizAttempts/{attemptId} {
@@ -125,17 +126,22 @@ service cloud.firestore {
 
     match /questions/{questionId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /courses/{courseId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
     match /performance/{perfId} {
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow write: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow create, update, delete: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /config/{configId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
     }
 
     match /test/connection {

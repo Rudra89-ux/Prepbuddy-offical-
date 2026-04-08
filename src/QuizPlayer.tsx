@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, CheckCircle2, XCircle, ChevronRight, Trophy, Loader2 } from 'lucide-react';
 import { Quiz, QuizAttempt } from './types';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () => void }) {
   const { user } = useAuth();
+  const [shuffledQuestions, setShuffledQuestions] = useState(quiz.questions);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -17,7 +18,13 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
   const [isFinished, setIsFinished] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const currentQuestion = quiz.questions[currentQuestionIndex];
+  useEffect(() => {
+    // Shuffle questions on mount
+    const shuffled = [...quiz.questions].sort(() => Math.random() - 0.5);
+    setShuffledQuestions(shuffled);
+  }, [quiz.id]);
+
+  const currentQuestion = shuffledQuestions[currentQuestionIndex];
 
   const handleOptionSelect = (option: string) => {
     if (isSubmitted) return;
@@ -33,7 +40,7 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
   };
 
   const handleNext = async () => {
-    if (currentQuestionIndex < quiz.questions.length - 1) {
+    if (currentQuestionIndex < shuffledQuestions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
       setSelectedOption(null);
       setIsSubmitted(false);
@@ -51,7 +58,7 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
         userId: user.uid,
         quizId: quiz.id,
         score: score + (selectedOption === currentQuestion.correctAnswer ? 1 : 0),
-        totalQuestions: quiz.questions.length,
+        totalQuestions: shuffledQuestions.length,
         subject: quiz.subject,
         topic: quiz.topic,
         completedAt: serverTimestamp()
@@ -81,7 +88,7 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
           <p className="text-muted-foreground uppercase tracking-widest text-xs">Great job on finishing {quiz.title}</p>
         </div>
         <div className="text-6xl font-black text-primary">
-          {finalScore} / {quiz.questions.length}
+          {finalScore} / {shuffledQuestions.length}
         </div>
         <Button onClick={onBack} className="w-full max-w-xs h-12 rounded-xl font-bold uppercase">
           Back to Quizzes
@@ -99,7 +106,7 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
           </Button>
           <div>
             <h1 className="text-sm font-bold truncate max-w-[150px]">{quiz.title}</h1>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Question {currentQuestionIndex + 1} of {quiz.questions.length}</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Question {currentQuestionIndex + 1} of {shuffledQuestions.length}</p>
           </div>
         </div>
         <div className="px-3 py-1 bg-primary/10 rounded-full border border-primary/20">
@@ -174,7 +181,7 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
             onClick={handleNext} 
             className="w-full h-12 rounded-xl font-bold uppercase gap-2"
           >
-            {currentQuestionIndex < quiz.questions.length - 1 ? 'Next Question' : 'Finish Quiz'}
+            {currentQuestionIndex < shuffledQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'}
             <ChevronRight className="w-4 h-4" />
           </Button>
         )}
