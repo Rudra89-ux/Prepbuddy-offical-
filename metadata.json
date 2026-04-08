@@ -1,0 +1,5 @@
+{
+  "name": "Prepbuddy",
+  "description": "Premium JEE + NEET preparation app with real-time battles, AI mentorship, and elite ranking systems.",
+  "requestFramePermissions": ["camera"]
+}

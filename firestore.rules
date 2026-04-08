@@ -1,0 +1,129 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required, immutable)
+    //   - email: string (required, immutable)
+    //   - displayName: string
+    //   - photoURL: string
+    //   - exam: string (JEE/NEET)
+    //   - isSubscribed: boolean
+    //   - createdAt: timestamp
+    //   - lastActive: timestamp
+    //   - completedLectures: list
+    //
+    // Collection: lectures
+    // Document ID: {lectureId}
+    // Fields:
+    //   - id: string
+    //   - title: string
+    //   - description: string
+    //   - subject: string
+    //   - topic: string
+    //   - videoUrl: string
+    //   - createdAt: timestamp
+    //
+    // Collection: quizzes
+    // Document ID: {quizId}
+    // Fields:
+    //   - id: string
+    //   - title: string
+    //   - description: string
+    //   - subject: string
+    //   - topic: string
+    //   - questions: list
+    //   - createdAt: timestamp
+    //
+    // Collection: quizAttempts
+    // Document ID: {attemptId}
+    // Fields:
+    //   - userId: string
+    //   - quizId: string
+    //   - score: number
+    //   - totalQuestions: number
+    //   - completedAt: timestamp
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "leaninkclothing@gmail.com" ||
+         request.auth.token.email == "rudrapable2010@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin'));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'exam', 'isSubscribed']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.exam in ['JEE', 'NEET'] &&
+             data.isSubscribed is bool;
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+
+    function emailUnchanged() {
+      return !('email' in request.resource.data) || request.resource.data.email == resource.data.email;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && emailUnchanged() && uidUnchanged()) || isAdmin();
+    }
+
+    match /lectures/{lectureId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /quizzes/{quizId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /quizAttempts/{attemptId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /questions/{questionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /performance/{perfId} {
+      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow write: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}

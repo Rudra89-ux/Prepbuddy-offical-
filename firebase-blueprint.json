@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and study progress",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "exam": { "type": "string", "enum": ["JEE", "NEET"] },
+        "isSubscribed": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "completedLectures": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["uid", "email", "exam", "isSubscribed"]
+    },
+    "Lecture": {
+      "title": "Lecture",
+      "description": "Educational video lecture",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "subject": { "type": "string", "enum": ["Physics", "Chemistry", "Maths", "Biology"] },
+        "topic": { "type": "string" },
+        "videoUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Question": {
+      "title": "Question",
+      "description": "Study question",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subject": { "type": "string" },
+        "topic": { "type": "string" },
+        "difficulty": { "type": "number" },
+        "text": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "correctAnswer": { "type": "string" },
+        "explanation": { "type": "string" },
+        "type": { "type": "string", "enum": ["MCQ", "Numerical"] }
+      }
+    },
+    "Performance": {
+      "title": "Performance",
+      "description": "User performance tracking for spaced repetition",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "questionId": { "type": "string" },
+        "lastAttempted": { "type": "string", "format": "date-time" },
+        "nextReview": { "type": "string", "format": "date-time" },
+        "interval": { "type": "number" },
+        "easeFactor": { "type": "number" },
+        "correctCount": { "type": "number" },
+        "wrongCount": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile data"
+    },
+    "/lectures/{lectureId}": {
+      "schema": "Lecture",
+      "description": "Video lectures"
+    },
+    "/questions/{questionId}": {
+      "schema": "Question",
+      "description": "Question bank"
+    },
+    "/performance/{perfId}": {
+      "schema": "Performance",
+      "description": "Spaced repetition data"
+    }
+  }
+}
