@@ -52,6 +52,8 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
         quizId: quiz.id,
         score: score + (selectedOption === currentQuestion.correctAnswer ? 1 : 0),
         totalQuestions: quiz.questions.length,
+        subject: quiz.subject,
+        topic: quiz.topic,
         completedAt: serverTimestamp()
       };
       await addDoc(collection(db, 'quizAttempts'), attempt);

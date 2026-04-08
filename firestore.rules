@@ -49,6 +49,17 @@ service cloud.firestore {
     //   - totalQuestions: number
     //   - completedAt: timestamp
     //
+    // Collection: courses
+    // Document ID: {courseId}
+    // Fields:
+    //   - id: string
+    //   - title: string
+    //   - description: string
+    //   - subject: string
+    //   - lectureIds: list
+    //   - quizIds: list
+    //   - createdAt: timestamp
+    //
     // ===============================================================
 
     // ===============================================================
@@ -113,6 +124,11 @@ service cloud.firestore {
     }
 
     match /questions/{questionId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /courses/{courseId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }

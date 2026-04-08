@@ -61,6 +61,46 @@
         "correctCount": { "type": "number" },
         "wrongCount": { "type": "number" }
       }
+    },
+    "Quiz": {
+      "title": "Quiz",
+      "description": "A set of questions for practice",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "subject": { "type": "string" },
+        "topic": { "type": "string" },
+        "questions": { "type": "array", "items": { "$ref": "Question" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "QuizAttempt": {
+      "title": "QuizAttempt",
+      "description": "User's attempt at a quiz",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "quizId": { "type": "string" },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Course": {
+      "title": "Course",
+      "description": "A structured learning path",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "subject": { "type": "string" },
+        "lectureIds": { "type": "array", "items": { "type": "string" } },
+        "quizIds": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
@@ -79,6 +119,18 @@
     "/performance/{perfId}": {
       "schema": "Performance",
       "description": "Spaced repetition data"
+    },
+    "/quizzes/{quizId}": {
+      "schema": "Quiz",
+      "description": "Practice quizzes"
+    },
+    "/quizAttempts/{attemptId}": {
+      "schema": "QuizAttempt",
+      "description": "User quiz attempts"
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Structured courses"
     }
   }
 }

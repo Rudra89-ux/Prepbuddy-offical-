@@ -9,6 +9,7 @@ export interface UserProfile {
   photoURL: string;
   exam: Exam;
   isSubscribed: boolean;
+  subscriptionStatus?: 'none' | 'pending' | 'active';
   role?: string;
   createdAt: any;
   lastActive: any;
@@ -64,5 +65,17 @@ export interface QuizAttempt {
   quizId: string;
   score: number;
   totalQuestions: number;
+  subject: Subject;
+  topic: string;
   completedAt: any;
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  description: string;
+  subject: Subject;
+  lectureIds: string[];
+  quizIds: string[];
+  createdAt: any;
 }

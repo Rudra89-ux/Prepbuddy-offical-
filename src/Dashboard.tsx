@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lecture, Quiz } from './types';
+import { Lecture, Quiz, Course } from './types';
 import { 
   BookOpen, 
   Brain, 
@@ -29,29 +29,35 @@ import {
   Mail,
   Target,
   Filter,
-  Trophy
+  Trophy,
+  GraduationCap,
+  BarChart3,
+  CheckCircle2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
-export type ViewType = 'dashboard' | 'lectures' | 'quizzes' | 'history' | 'settings' | 'admin';
+export type ViewType = 'dashboard' | 'lectures' | 'quizzes' | 'courses' | 'history' | 'settings' | 'admin';
 
 export default function Dashboard({ 
   onOpenAdmin, 
   onSelectLecture,
   onSelectQuiz,
+  onOpenReport,
   currentView,
   onViewChange
 }: { 
   onOpenAdmin: () => void, 
   onSelectLecture: (lecture: Lecture) => void,
   onSelectQuiz: (quiz: Quiz) => void,
+  onOpenReport: () => void,
   currentView: ViewType,
   onViewChange: (view: ViewType) => void
 }) {
   const { profile, logout, isAdmin } = useAuth();
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -75,9 +81,17 @@ export default function Dashboard({
       handleFirestoreError(error, OperationType.LIST, 'quizzes');
     });
 
+    const qC = query(collection(db, 'courses'), orderBy('createdAt', 'desc'), limit(100));
+    const unsubC = onSnapshot(qC, (snapshot) => {
+      setCourses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Course)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'courses');
+    });
+
     return () => {
       unsubL();
       unsubQ();
+      unsubC();
     };
   }, []);
 
@@ -99,11 +113,18 @@ export default function Dashboard({
     return matchesSearch && matchesSubject;
   });
 
+  const filteredCourses = courses.filter(c => {
+    const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.subject.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSubject = !selectedSubject || c.subject === selectedSubject;
+    return matchesSearch && matchesSubject;
+  });
+
   const completedLectures = lectures.filter(l => profile.completedLectures?.includes(l.id));
 
   const handleGetStudyPlan = () => {
-    toast.info("AI is generating your personalized study plan...", {
-      description: "This will be based on your completed lectures and target exam.",
+    toast.info("Study plan feature coming soon!", {
+      description: "We are working on structured paths for your success.",
       duration: 3000,
     });
   };
@@ -152,7 +173,12 @@ export default function Dashboard({
                 <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary/50" /></div>
               ) : filteredLectures.length > 0 ? (
                 filteredLectures.map(lecture => (
-                  <LectureItem key={lecture.id} lecture={lecture} onClick={() => onSelectLecture(lecture)} />
+                  <LectureItem 
+                    key={lecture.id} 
+                    lecture={lecture} 
+                    onClick={() => onSelectLecture(lecture)} 
+                    isCompleted={profile.completedLectures?.includes(lecture.id)}
+                  />
                 ))
               ) : (
                 <div className="p-12 text-center border border-dashed border-border rounded-3xl">
@@ -216,6 +242,59 @@ export default function Dashboard({
           </section>
         );
 
+      case 'courses':
+        return (
+          <section className="space-y-6">
+            <div className="flex flex-col gap-4 mb-6">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-primary/10 rounded-xl">
+                  <GraduationCap className="w-5 h-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest">Structured Courses</h3>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Complete learning paths</p>
+                </div>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {['Physics', 'Chemistry', 'Maths', 'Biology'].map(sub => (
+                  <Badge 
+                    key={sub}
+                    variant={selectedSubject === sub ? 'default' : 'outline'}
+                    className="cursor-pointer text-[8px] uppercase whitespace-nowrap"
+                    onClick={() => setSelectedSubject(selectedSubject === sub ? null : sub)}
+                  >
+                    {sub}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search courses..." 
+                className="pl-10 h-12 bg-secondary/50 border-border/50 rounded-2xl"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {loading ? (
+                <div className="p-8 text-center col-span-full"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary/50" /></div>
+              ) : filteredCourses.length > 0 ? (
+                filteredCourses.map(course => (
+                  <CourseItem key={course.id} course={course} />
+                ))
+              ) : (
+                <div className="p-12 text-center border border-dashed border-border rounded-3xl col-span-full">
+                  <p className="text-xs text-muted-foreground uppercase tracking-widest">No courses found</p>
+                </div>
+              )}
+            </div>
+          </section>
+        );
+
       case 'history':
         return (
           <section className="space-y-4">
@@ -232,7 +311,12 @@ export default function Dashboard({
             <div className="space-y-3">
               {completedLectures.length > 0 ? (
                 completedLectures.map(lecture => (
-                  <LectureItem key={lecture.id} lecture={lecture} onClick={() => onSelectLecture(lecture)} />
+                  <LectureItem 
+                    key={lecture.id} 
+                    lecture={lecture} 
+                    onClick={() => onSelectLecture(lecture)} 
+                    isCompleted={true}
+                  />
                 ))
               ) : (
                 <div className="p-12 text-center border border-dashed border-border rounded-3xl">
@@ -322,10 +406,10 @@ export default function Dashboard({
                 onClick={() => onViewChange('lectures')}
               />
               <StatCard 
-                icon={<History className="w-4 h-4 text-blue-500" />} 
-                label="Completed" 
-                value={profile.completedLectures?.length || 0} 
-                onClick={() => onViewChange('history')}
+                icon={<BarChart3 className="w-4 h-4 text-blue-500" />} 
+                label="Performance" 
+                value="View" 
+                onClick={onOpenReport}
               />
             </section>
 
@@ -361,19 +445,19 @@ export default function Dashboard({
               </div>
             </section>
 
-            {/* AI Study Mentor */}
+            {/* Study Mentor */}
             <section className="p-6 rounded-3xl bg-gradient-to-br from-primary/10 to-blue-500/10 border border-primary/10 space-y-4">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-primary/20 rounded-xl">
-                  <Sparkles className="w-5 h-5 text-primary" />
+                  <BookOpen className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-black uppercase tracking-widest">AI Study Mentor</h3>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Personalized Insights</p>
+                  <h3 className="text-xs font-black uppercase tracking-widest">Study Mentor</h3>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Personalized Guidance</p>
                 </div>
               </div>
               <p className="text-sm text-foreground/80 leading-relaxed">
-                "You've been focusing heavily on Physics. Try balancing with Chemistry Organic revision today to maintain a steady progress."
+                "Keep up the consistency! Balancing your subjects is the key to cracking JEE/NEET."
               </p>
               <Button 
                 onClick={handleGetStudyPlan}
@@ -449,16 +533,20 @@ export default function Dashboard({
             active={currentView === 'lectures'} 
             onClick={() => onViewChange('lectures')}
           />
-          <div className="relative -top-6 sm:-top-8">
-            <motion.button 
-              whileHover={{ scale: 1.1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => onViewChange('quizzes')}
-              className="w-12 h-12 sm:w-16 sm:h-16 bg-primary text-primary-foreground rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center"
-            >
-              <Brain className="w-6 h-6 sm:w-8 sm:h-8" />
-            </motion.button>
-          </div>
+          {(profile.subscriptionStatus === 'active' || isAdmin) && (
+            <NavIcon 
+              icon={<GraduationCap className="w-4 h-4 sm:w-5 sm:h-5" />} 
+              label="Courses" 
+              active={currentView === 'courses'} 
+              onClick={() => onViewChange('courses')}
+            />
+          )}
+          <NavIcon 
+            icon={<Brain className="w-4 h-4 sm:w-5 sm:h-5" />} 
+            label="Quizzes" 
+            active={currentView === 'quizzes'} 
+            onClick={() => onViewChange('quizzes')}
+          />
           <NavIcon 
             icon={<History className="w-4 h-4 sm:w-5 sm:h-5" />} 
             label="History" 
@@ -477,26 +565,36 @@ export default function Dashboard({
   );
 }
 
-function LectureItem({ lecture, onClick }: { lecture: Lecture, onClick: () => void }) {
+function LectureItem({ lecture, onClick, isCompleted }: { lecture: Lecture, onClick: () => void, isCompleted?: boolean }) {
   return (
     <motion.div 
       whileHover={{ scale: 1.01, x: 4 }}
       whileTap={{ scale: 0.99 }}
       onClick={onClick}
-      className="p-3 sm:p-4 rounded-2xl border border-border bg-secondary/20 hover:bg-secondary/40 transition-all cursor-pointer flex items-center gap-3 sm:gap-4 group"
+      className={`p-3 sm:p-4 rounded-2xl border transition-all cursor-pointer flex items-center gap-3 sm:gap-4 group ${isCompleted ? 'border-primary/30 bg-primary/5' : 'border-border bg-secondary/20 hover:bg-secondary/40'}`}
     >
-      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors flex-shrink-0">
-        <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+      <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center transition-colors flex-shrink-0 ${isCompleted ? 'bg-primary text-primary-foreground' : 'bg-primary/10 group-hover:bg-primary group-hover:text-primary-foreground'}`}>
+        {isCompleted ? (
+          <motion.div
+            initial={{ scale: 0, rotate: -45 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          >
+            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
+          </motion.div>
+        ) : (
+          <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+        )}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex gap-1 sm:gap-2 mb-1">
-          <Badge variant="secondary" className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{lecture.subject}</Badge>
+          <Badge variant={isCompleted ? 'default' : 'secondary'} className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{lecture.subject}</Badge>
           <Badge variant="outline" className="text-[7px] sm:text-[8px] uppercase px-1.5 py-0">{lecture.topic}</Badge>
         </div>
-        <h4 className="text-xs sm:text-sm font-bold truncate">{lecture.title}</h4>
+        <h4 className={`text-xs sm:text-sm font-bold truncate ${isCompleted ? 'text-primary' : ''}`}>{lecture.title}</h4>
         <p className="text-[9px] sm:text-[10px] text-muted-foreground truncate">{lecture.description}</p>
       </div>
-      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+      <ChevronRight className={`w-4 h-4 transition-colors flex-shrink-0 ${isCompleted ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
     </motion.div>
   );
 }
@@ -521,6 +619,32 @@ function QuizItem({ quiz, onClick }: { quiz: Quiz, onClick: () => void }) {
         <p className="text-[9px] sm:text-[10px] text-muted-foreground truncate">{quiz.topic}</p>
       </div>
       <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors flex-shrink-0" />
+    </motion.div>
+  );
+}
+
+function CourseItem({ course }: { course: Course }) {
+  return (
+    <motion.div 
+      whileHover={{ scale: 1.01, y: -2 }}
+      whileTap={{ scale: 0.99 }}
+      className="p-4 rounded-3xl border border-border bg-secondary/20 hover:bg-secondary/40 transition-all cursor-pointer space-y-4 group"
+    >
+      <div className="flex justify-between items-start">
+        <div className="p-3 bg-primary/10 rounded-2xl group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+          <GraduationCap className="w-6 h-6" />
+        </div>
+        <Badge variant="secondary" className="text-[8px] uppercase">{course.subject}</Badge>
+      </div>
+      <div className="space-y-1">
+        <h4 className="text-sm font-bold leading-tight">{course.title}</h4>
+        <p className="text-[10px] text-muted-foreground line-clamp-2">{course.description}</p>
+      </div>
+      <div className="flex gap-2">
+        <Badge variant="outline" className="text-[7px] uppercase">{course.lectureIds.length} Lectures</Badge>
+        <Badge variant="outline" className="text-[7px] uppercase">{course.quizIds.length} Quizzes</Badge>
+      </div>
+      <Button className="w-full h-8 text-[10px] uppercase font-bold rounded-xl">Start Journey</Button>
     </motion.div>
   );
 }

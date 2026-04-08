@@ -37,18 +37,6 @@ export default function Login() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      await login();
-      toast.success("Welcome to the Arena");
-    } catch (error: any) {
-      toast.error(error.message || "Google login failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 relative overflow-hidden">
       {/* Dynamic Background Elements */}
@@ -123,24 +111,6 @@ export default function Login() {
               )}
             </Button>
           </form>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t border-border/50" />
-            </div>
-            <div className="relative flex justify-center text-[10px] uppercase tracking-widest">
-              <span className="bg-secondary px-2 text-muted-foreground">Or continue with</span>
-            </div>
-          </div>
-
-          <Button 
-            variant="outline" 
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full h-12 border-border/50 hover:bg-primary/5 transition-all"
-          >
-            Google Sign In
-          </Button>
 
           <p className="text-center text-xs text-muted-foreground">
             {isLogin ? "New here?" : "Already have an account?"}{' '}

@@ -43,6 +43,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         unsubProfile = onSnapshot(userRef, (doc) => {
           if (doc.exists()) {
             const data = doc.data() as UserProfile;
+            
+            // Force non-admins to have isSubscribed=false
+            const isUserAdmin = user.email === 'rudrapable2010@gmail.com' || user.email === 'leaninkclothing@gmail.com' || data.role === 'admin';
+            if (!isUserAdmin && data.isSubscribed) {
+              data.isSubscribed = false;
+            }
+            
             setProfile(data);
             // Also check role from document
             if (data.role === 'admin') {
@@ -74,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (email && password) {
         await signInWithEmailAndPassword(auth, email, password);
       } else {
-        await signInWithPopup(auth, googleProvider);
+        throw new Error("Email and password are required");
       }
     } catch (error) {
       console.error("Login failed:", error);
@@ -102,13 +109,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const completeOnboarding = async (exam: Exam) => {
     if (!user) return;
     const userRef = doc(db, 'users', user.uid);
+    
+    // Check if user is admin based on email
+    const isUserAdmin = user.email === 'rudrapable2010@gmail.com' || user.email === 'leaninkclothing@gmail.com';
+
     const newProfile: UserProfile = {
       uid: user.uid,
       email: user.email || '',
       displayName: user.displayName || 'Student',
       photoURL: user.photoURL || '',
       exam,
-      isSubscribed: true,
+      isSubscribed: isUserAdmin, // Only admins get premium by default now
+      subscriptionStatus: isUserAdmin ? 'active' : 'none',
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp(),
       completedLectures: []

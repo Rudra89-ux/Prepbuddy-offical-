@@ -13,11 +13,13 @@ import AdminPanel from './AdminPanel';
 
 import LecturePlayer from './LecturePlayer';
 import QuizPlayer from './QuizPlayer';
+import PerformanceReport from './PerformanceReport';
+import Checkout from './Checkout';
 import { Lecture, Quiz } from './types';
 
 function AppContent() {
   const { user, profile, loading, isAdmin } = useAuth();
-  const [view, setView] = useState<ViewType | 'player' | 'quiz-player'>('dashboard');
+  const [view, setView] = useState<ViewType | 'player' | 'quiz-player' | 'report' | 'checkout'>('dashboard');
   const [selectedLecture, setSelectedLecture] = useState<Lecture | null>(null);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
 
@@ -40,6 +42,13 @@ function AppContent() {
     return <Onboarding />;
   }
 
+  // Subscription Check: If not admin and not active subscription, show checkout
+  const isSubscribed = profile.subscriptionStatus === 'active' || isAdmin;
+
+  if (!isSubscribed && !isAdmin) {
+    return <Checkout />;
+  }
+
   if (view === 'admin' && isAdmin) {
     return <AdminPanel onExit={() => setView('dashboard')} />;
   }
@@ -50,6 +59,10 @@ function AppContent() {
 
   if (view === 'quiz-player' && selectedQuiz) {
     return <QuizPlayer quiz={selectedQuiz} onBack={() => setView('quizzes')} />;
+  }
+
+  if (view === 'report') {
+    return <PerformanceReport onBack={() => setView('dashboard')} />;
   }
 
   return (
@@ -64,6 +77,7 @@ function AppContent() {
           setSelectedQuiz(quiz);
           setView('quiz-player');
         }}
+        onOpenReport={() => setView('report')}
         currentView={view as ViewType}
         onViewChange={(v) => setView(v)}
       />
