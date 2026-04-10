@@ -60,6 +60,18 @@ service cloud.firestore {
     //   - quizIds: list
     //   - createdAt: timestamp
     //
+    // Collection: modules
+    // Document ID: {moduleId}
+    // Fields:
+    //   - id: string
+    //   - title: string
+    //   - description: string
+    //   - subject: string
+    //   - topic: string
+    //   - lectureIds: list
+    //   - quizIds: list
+    //   - createdAt: timestamp
+    //
     // Collection: mockTests
     // Document ID: {testId}
     // Fields:
@@ -162,6 +174,12 @@ service cloud.firestore {
     }
 
     match /courses/{courseId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() || isSubAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /modules/{moduleId} {
       allow read: if isAuthenticated();
       allow create, update: if isAdmin() || isSubAdmin();
       allow delete: if isAdmin();

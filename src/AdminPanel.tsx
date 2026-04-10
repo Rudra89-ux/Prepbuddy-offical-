@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap, Settings, XCircle, Mic, FileText, Upload, Trophy, ChevronDown, List } from 'lucide-react';
 import { toast } from 'sonner';
-import { Question, Subject, QuestionType, Lecture, Quiz, Course, UserProfile, MockTest, Exam } from './types';
+import { Question, Subject, QuestionType, Lecture, Quiz, Course, UserProfile, MockTest, Exam, Module } from './types';
 import { storage, ref, uploadBytes, getDownloadURL } from './lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
@@ -22,6 +22,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [modules, setModules] = useState<Module[]>([]);
   const [mockTests, setMockTests] = useState<MockTest[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,7 +43,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   
   // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingType, setEditingType] = useState<'question' | 'lecture' | 'quiz' | 'course' | 'mock-test' | null>(null);
+  const [editingType, setEditingType] = useState<'question' | 'lecture' | 'quiz' | 'course' | 'mock-test' | 'module' | null>(null);
 
   // New Question Form
   const [newQ, setNewQ] = useState({
@@ -89,6 +90,17 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     quizIds: [] as string[]
   });
 
+  // New Module Form
+  const [newModule, setNewModule] = useState({
+    title: '',
+    description: '',
+    subject: 'Physics' as Subject,
+    topic: '',
+    lectureIds: [] as string[],
+    quizIds: [] as string[],
+    driveLink: ''
+  });
+
   // New Mock Test Form
   const [newMockTest, setNewMockTest] = useState({
     title: '',
@@ -106,6 +118,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     fetchLectures();
     fetchQuizzes();
     fetchCourses();
+    fetchModules();
     fetchMockTests();
     fetchUsers();
     fetchConfig();
@@ -202,6 +215,17 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       setCourses(fetched);
     } catch (error) {
       console.error("Fetch courses error:", error);
+    }
+  };
+
+  const fetchModules = async () => {
+    try {
+      const q = query(collection(db, 'modules'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Module));
+      setModules(fetched);
+    } catch (error) {
+      console.error("Fetch modules error:", error);
     }
   };
 
@@ -562,6 +586,62 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     setEditingType(null);
   };
 
+  const handleAddModule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const moduleData = {
+        ...newModule,
+      };
+
+      if (editingId && editingType === 'module') {
+        await updateDoc(doc(db, 'modules', editingId), moduleData);
+        toast.success("Module updated");
+      } else {
+        await addDoc(collection(db, 'modules'), {
+          ...moduleData,
+          createdAt: serverTimestamp()
+        });
+        toast.success("Module created");
+      }
+      resetModuleForm();
+      fetchModules();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'modules');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetModuleForm = () => {
+    setNewModule({
+      title: '',
+      description: '',
+      subject: 'Physics',
+      topic: '',
+      lectureIds: [],
+      quizIds: [],
+      driveLink: ''
+    });
+    setEditingId(null);
+    setEditingType(null);
+  };
+
+  const startEditModule = (m: Module) => {
+    setEditingId(m.id);
+    setEditingType('module');
+    setNewModule({
+      title: m.title,
+      description: m.description,
+      subject: m.subject,
+      topic: m.topic,
+      lectureIds: m.lectureIds || [],
+      quizIds: m.quizIds || [],
+      driveLink: m.driveLink || ''
+    });
+    setActiveTab('modules');
+  };
+
   const handleDeleteQuestion = async (id: string) => {
     if (isSubAdmin) {
       toast.error("Sub-admins cannot delete resources");
@@ -665,6 +745,20 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       fetchCourses();
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `courses/${id}`);
+    }
+  };
+
+  const handleDeleteModule = async (id: string) => {
+    if (isSubAdmin) {
+      toast.error("Sub-admins cannot delete resources");
+      return;
+    }
+    try {
+      await deleteDoc(doc(db, 'modules', id));
+      toast.success("Module deleted");
+      fetchModules();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `modules/${id}`);
     }
   };
 
@@ -873,7 +967,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
 
       <main className="flex-1 p-4 sm:p-6 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <div className="grid grid-cols-2 sm:grid-cols-8 gap-2 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2 mb-6">
             <Button 
               variant={activeTab === 'lectures' ? 'default' : 'outline'}
               className="h-16 flex flex-col gap-1 border-primary/20 bg-primary/5 hover:bg-primary/10"
@@ -921,6 +1015,14 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
               <span className="text-[10px] uppercase font-bold">Courses</span>
             </Button>
             <Button 
+              variant={activeTab === 'modules' ? 'default' : 'outline'}
+              className="h-16 flex flex-col gap-1 border-indigo-500/20 bg-indigo-500/5 hover:bg-indigo-500/10"
+              onClick={() => setActiveTab('modules')}
+            >
+              <List className="w-5 h-5 text-indigo-500" />
+              <span className="text-[10px] uppercase font-bold">Modules</span>
+            </Button>
+            <Button 
               variant={activeTab === 'mock-tests' ? 'default' : 'outline'}
               className="h-16 flex flex-col gap-1 border-red-500/20 bg-red-500/5 hover:bg-red-500/10"
               onClick={() => setActiveTab('mock-tests')}
@@ -959,6 +1061,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
             <TabsTrigger value="discussions">Topic Discussion</TabsTrigger>
             <TabsTrigger value="quizzes">Quizzes</TabsTrigger>
             <TabsTrigger value="courses">Courses</TabsTrigger>
+            <TabsTrigger value="modules">Modules</TabsTrigger>
             <TabsTrigger value="questions">Questions</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -1581,6 +1684,152 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
             </div>
           </TabsContent>
 
+          <TabsContent value="modules" className="flex-1 overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+              <Card className="premium-card h-fit">
+                <CardHeader>
+                  <CardTitle className="text-sm uppercase tracking-widest">{editingId && editingType === 'module' ? 'Edit Module' : 'Create Module'}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAddModule} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Title</Label>
+                      <Input value={newModule.title} onChange={e => setNewModule({...newModule, title: e.target.value})} placeholder="Module Title" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Description</Label>
+                      <textarea 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm h-20"
+                        value={newModule.description}
+                        onChange={e => setNewModule({...newModule, description: e.target.value})}
+                        placeholder="Module description..."
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase">Subject</Label>
+                        <select 
+                          className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                          value={newModule.subject}
+                          onChange={e => setNewModule({...newModule, subject: e.target.value as Subject})}
+                        >
+                          <option>Physics</option>
+                          <option>Chemistry</option>
+                          <option>Maths</option>
+                          <option>Biology</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase">Topic</Label>
+                        <Input value={newModule.topic} onChange={e => setNewModule({...newModule, topic: e.target.value})} placeholder="e.g. Kinematics" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Drive Link (Optional)</Label>
+                      <Input value={newModule.driveLink} onChange={e => setNewModule({...newModule, driveLink: e.target.value})} placeholder="https://drive.google.com/..." />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Select Lectures ({newModule.lectureIds.length})</Label>
+                      <ScrollArea className="h-32 border border-border rounded-md p-2">
+                        <div className="space-y-2">
+                          {lectures.filter(l => l.subject === newModule.subject).map(l => (
+                            <div 
+                              key={l.id} 
+                              onClick={() => {
+                                const ids = newModule.lectureIds.includes(l.id)
+                                  ? newModule.lectureIds.filter(id => id !== l.id)
+                                  : [...newModule.lectureIds, l.id];
+                                setNewModule({...newModule, lectureIds: ids});
+                              }}
+                              className={`p-2 rounded text-xs cursor-pointer border transition-all ${newModule.lectureIds.includes(l.id) ? 'bg-primary/20 border-primary' : 'bg-secondary/20 border-transparent'}`}
+                            >
+                              <p className="line-clamp-1">{l.title}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Select Quizzes ({newModule.quizIds.length})</Label>
+                      <ScrollArea className="h-32 border border-border rounded-md p-2">
+                        <div className="space-y-2">
+                          {quizzes.filter(q => q.subject === newModule.subject).map(q => (
+                            <div 
+                              key={q.id} 
+                              onClick={() => {
+                                const ids = newModule.quizIds.includes(q.id)
+                                  ? newModule.quizIds.filter(id => id !== q.id)
+                                  : [...newModule.quizIds, q.id];
+                                setNewModule({...newModule, quizIds: ids});
+                              }}
+                              className={`p-2 rounded text-xs cursor-pointer border transition-all ${newModule.quizIds.includes(q.id) ? 'bg-primary/20 border-primary' : 'bg-secondary/20 border-transparent'}`}
+                            >
+                              <p className="line-clamp-1">{q.title}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="submit" className="flex-1" disabled={loading}>
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingId && editingType === 'module' ? 'Update' : 'Create')}
+                      </Button>
+                      {editingId && editingType === 'module' && (
+                        <Button type="button" variant="outline" onClick={resetModuleForm}>Cancel</Button>
+                      )}
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card className="premium-card lg:col-span-2 flex flex-col overflow-hidden">
+                <CardHeader>
+                  <CardTitle className="text-sm uppercase tracking-widest">Existing Modules</CardTitle>
+                </CardHeader>
+                <CardContent className="flex-1 overflow-hidden p-0">
+                  <ScrollArea className="h-[600px]">
+                    <div className="p-4 space-y-4">
+                      {modules.map(m => (
+                        <div key={m.id} className="p-4 rounded-lg border border-border bg-secondary/20 flex justify-between items-start group">
+                          <div className="space-y-1">
+                            <div className="flex gap-2">
+                              <Badge variant="secondary" className="text-[8px] uppercase">{m.subject}</Badge>
+                              <Badge variant="outline" className="text-[8px] uppercase">{m.topic}</Badge>
+                              <Badge variant="outline" className="text-[8px] uppercase">{m.lectureIds.length} Lectures</Badge>
+                              <Badge variant="outline" className="text-[8px] uppercase">{m.quizIds.length} Quizzes</Badge>
+                              {m.driveLink && <Badge variant="outline" className="text-[8px] uppercase border-indigo-500/50 text-indigo-500">Drive Link</Badge>}
+                            </div>
+                            <p className="text-sm font-bold">{m.title}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-1">{m.description}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-muted-foreground hover:text-primary"
+                              onClick={() => startEditModule(m)}
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-red-500 hover:bg-red-500/10"
+                                onClick={() => setDeleteConfirm({ id: m.id, type: 'module', title: m.title })}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
           <TabsContent value="mock-tests" className="flex-1 overflow-hidden">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
               <Card className="premium-card h-fit">
@@ -2574,6 +2823,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                     else if (type === 'lecture') await handleDeleteLecture(id);
                     else if (type === 'quiz') await handleDeleteQuiz(id);
                     else if (type === 'course') await handleDeleteCourse(id);
+                    else if (type === 'module') await handleDeleteModule(id);
                     else if (type === 'mock-test') await handleDeleteMockTest(id);
                     else if (type === 'user') await handleDeleteUser(id);
                     else if (type === 'config') await handleDeleteConfig(id);

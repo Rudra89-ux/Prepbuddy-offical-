@@ -85,6 +85,18 @@ export interface Course {
   createdAt: any;
 }
 
+export interface Module {
+  id: string;
+  title: string;
+  description: string;
+  subject: Subject;
+  topic: string;
+  lectureIds: string[];
+  quizIds: string[];
+  driveLink?: string;
+  createdAt: any;
+}
+
 export interface MockTest {
   id: string;
   title: string;

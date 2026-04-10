@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lecture, Quiz, Course, QuizAttempt, MockTest } from './types';
+import { Lecture, Quiz, Course, QuizAttempt, MockTest, Module } from './types';
 import { 
   BookOpen, 
   Brain, 
@@ -38,12 +38,15 @@ import {
   Menu,
   X,
   RotateCcw,
-  FileText
+  FileText,
+  List,
+  ChevronDown,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
-export type ViewType = 'dashboard' | 'resources' | 'quizzes' | 'courses' | 'mock-tests' | 'history' | 'settings' | 'admin';
+export type ViewType = 'dashboard' | 'resources' | 'quizzes' | 'courses' | 'modules' | 'mock-tests' | 'history' | 'settings' | 'admin';
 
 export default function Dashboard({ 
   onOpenAdmin, 
@@ -66,6 +69,7 @@ export default function Dashboard({
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [modules, setModules] = useState<Module[]>([]);
   const [mockTests, setMockTests] = useState<MockTest[]>([]);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +109,13 @@ export default function Dashboard({
       handleFirestoreError(error, OperationType.LIST, 'courses');
     });
 
+    const qM = query(collection(db, 'modules'), orderBy('createdAt', 'desc'), limit(100));
+    const unsubM = onSnapshot(qM, (snapshot) => {
+      setModules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Module)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'modules');
+    });
+
     const qQA = query(
       collection(db, 'quizAttempts'), 
       where('userId', '==', profile.uid),
@@ -128,6 +139,7 @@ export default function Dashboard({
       unsubL();
       unsubQ();
       unsubC();
+      unsubM();
       unsubQA();
       unsubMT();
     };
@@ -163,6 +175,14 @@ export default function Dashboard({
     const matchesSearch = c.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.subject.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSubject = !selectedSubject || c.subject === selectedSubject;
+    return matchesSearch && matchesSubject;
+  });
+
+  const filteredModules = modules.filter(m => {
+    const matchesSearch = m.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      m.topic.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSubject = !selectedSubject || m.subject === selectedSubject;
     return matchesSearch && matchesSubject;
   });
 
@@ -487,6 +507,66 @@ export default function Dashboard({
           </section>
         );
 
+      case 'modules':
+        return (
+          <section className="space-y-6">
+            <div className="flex flex-col gap-4 mb-6">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-indigo-500/10 rounded-xl">
+                  <List className="w-5 h-5 text-indigo-500" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-black uppercase tracking-widest">Learning Modules</h3>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Topic-wise structured learning</p>
+                </div>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+                {examSubjects.map(sub => (
+                  <Badge 
+                    key={sub}
+                    variant={selectedSubject === sub ? 'default' : 'outline'}
+                    className="cursor-pointer text-[8px] uppercase whitespace-nowrap"
+                    onClick={() => setSelectedSubject(selectedSubject === sub ? null : sub)}
+                  >
+                    {sub}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative mb-6">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search modules..." 
+                className="pl-10 h-12 bg-secondary/50 border-border/50 rounded-2xl"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {loading ? (
+                <div className="p-8 text-center col-span-full"><Loader2 className="w-6 h-6 animate-spin mx-auto text-primary/50" /></div>
+              ) : filteredModules.length > 0 ? (
+                filteredModules.map(module => (
+                  <ModuleItem 
+                    key={module.id} 
+                    module={module} 
+                    onSelectLecture={onSelectLecture}
+                    onSelectQuiz={onSelectQuiz}
+                    lectures={lectures}
+                    quizzes={quizzes}
+                  />
+                ))
+              ) : (
+                <div className="p-12 text-center border border-dashed border-border rounded-3xl col-span-full">
+                  <p className="text-xs text-muted-foreground uppercase tracking-widest">No modules found</p>
+                </div>
+              )}
+            </div>
+          </section>
+        );
+
       case 'mock-tests':
         return (
           <section className="space-y-6">
@@ -804,6 +884,12 @@ export default function Dashboard({
             onClick={() => onViewChange('resources')}
           />
           <NavIcon 
+            icon={<List className="w-4 h-4 sm:w-5 sm:h-5" />} 
+            label="Modules" 
+            active={currentView === 'modules'} 
+            onClick={() => onViewChange('modules')}
+          />
+          <NavIcon 
             icon={<Brain className="w-4 h-4 sm:w-5 sm:h-5" />} 
             label="Quizzes" 
             active={currentView === 'quizzes'} 
@@ -983,6 +1069,131 @@ function CourseItem({ course }: { course: Course }) {
         <Badge variant="outline" className="text-[7px] uppercase">{course.quizIds.length} Quizzes</Badge>
       </div>
       <Button className="w-full h-8 text-[10px] uppercase font-bold rounded-xl">Start Journey</Button>
+    </motion.div>
+  );
+}
+
+function ModuleItem({ 
+  module, 
+  onSelectLecture, 
+  onSelectQuiz, 
+  lectures, 
+  quizzes 
+}: { 
+  module: Module, 
+  onSelectLecture: (l: Lecture) => void,
+  onSelectQuiz: (q: Quiz) => void,
+  lectures: Lecture[],
+  quizzes: Quiz[]
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const moduleLectures = lectures.filter(l => module.lectureIds?.includes(l.id));
+  const moduleQuizzes = quizzes.filter(q => module.quizIds?.includes(q.id));
+
+  return (
+    <motion.div 
+      layout
+      className="rounded-3xl border border-border bg-secondary/20 overflow-hidden flex flex-col h-fit"
+    >
+      <div 
+        className="p-4 cursor-pointer hover:bg-secondary/40 transition-all space-y-3"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div className="flex justify-between items-start">
+          <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-500">
+            <List className="w-6 h-6" />
+          </div>
+          <Badge variant="secondary" className="text-[8px] uppercase">{module.subject}</Badge>
+        </div>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-bold leading-tight">{module.title}</h4>
+            <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          </div>
+          <p className="text-[10px] text-muted-foreground line-clamp-1">{module.topic}</p>
+        </div>
+        <div className="flex gap-2">
+          <Badge variant="outline" className="text-[7px] uppercase">{moduleLectures.length} Lectures</Badge>
+          <Badge variant="outline" className="text-[7px] uppercase">{moduleQuizzes.length} Quizzes</Badge>
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-t border-border bg-background/50"
+          >
+            <div className="p-4 space-y-4">
+              {moduleLectures.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[8px] uppercase font-black text-muted-foreground tracking-widest">Lectures</p>
+                  <div className="space-y-2">
+                    {moduleLectures.map(l => (
+                      <div 
+                        key={l.id} 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectLecture(l);
+                        }}
+                        className="flex items-center gap-3 p-2 rounded-xl border border-border bg-secondary/20 hover:bg-secondary/40 cursor-pointer transition-all"
+                      >
+                        <div className="p-1.5 bg-primary/10 rounded-lg text-primary">
+                          <Play className="w-3 h-3" />
+                        </div>
+                        <p className="text-xs font-medium truncate">{l.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {moduleQuizzes.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[8px] uppercase font-black text-muted-foreground tracking-widest">Quizzes</p>
+                  <div className="space-y-2">
+                    {moduleQuizzes.map(q => (
+                      <div 
+                        key={q.id} 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectQuiz(q);
+                        }}
+                        className="flex items-center gap-3 p-2 rounded-xl border border-border bg-secondary/20 hover:bg-secondary/40 cursor-pointer transition-all"
+                      >
+                        <div className="p-1.5 bg-blue-500/10 rounded-lg text-blue-500">
+                          <Brain className="w-3 h-3" />
+                        </div>
+                        <p className="text-xs font-medium truncate">{q.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {moduleQuizzes.length === 0 && moduleLectures.length === 0 && !module.driveLink && (
+                <p className="text-[10px] text-center text-muted-foreground uppercase py-2">No resources in this module</p>
+              )}
+              {module.driveLink && (
+                <div className="space-y-2">
+                  <p className="text-[8px] uppercase font-black text-muted-foreground tracking-widest">External Resources</p>
+                  <Button 
+                    variant="outline" 
+                    className="w-full h-10 rounded-xl border-indigo-500/20 bg-indigo-500/5 text-indigo-500 hover:bg-indigo-500/10 gap-2 text-xs font-bold uppercase"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(module.driveLink, '_blank');
+                    }}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Open Drive Link
+                  </Button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
