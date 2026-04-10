@@ -75,8 +75,8 @@ export default function Onboarding() {
                     <BookOpen className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <p className="font-semibold">Video Lectures</p>
-                    <p className="text-sm text-muted-foreground">Access high-quality content anytime.</p>
+                    <p className="font-semibold">Study Resources</p>
+                    <p className="text-sm text-muted-foreground">Access video lectures, discussions, and notes.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">

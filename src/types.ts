@@ -1,5 +1,5 @@
 export type Exam = 'JEE' | 'NEET';
-export type Subject = 'Physics' | 'Chemistry' | 'Maths' | 'Biology';
+export type Subject = 'Physics' | 'Chemistry' | 'Maths' | 'Biology' | 'Botany' | 'Zoology';
 export type QuestionType = 'MCQ' | 'Numerical';
 
 export interface UserProfile {
@@ -14,15 +14,16 @@ export interface UserProfile {
   role?: string;
   createdAt: any;
   lastActive: any;
-  completedLectures: string[];
+  completedResources: string[];
 }
 
 export interface Question {
   id: string;
   subject: Subject;
-  topic: string;
   difficulty: number;
   text: string;
+  imageUrl?: string;
+  imageLabel?: string;
   options?: string[];
   correctAnswer: string;
   explanation: string;
@@ -37,7 +38,8 @@ export interface Lecture {
   topic: string;
   videoUrl?: string;
   audioUrl?: string;
-  type: 'video' | 'audio';
+  pdfUrl?: string;
+  type: 'video' | 'audio' | 'pdf';
   createdAt: any;
 }
 
@@ -81,4 +83,26 @@ export interface Course {
   lectureIds: string[];
   quizIds: string[];
   createdAt: any;
+}
+
+export interface MockTest {
+  id: string;
+  title: string;
+  description: string;
+  exam: Exam;
+  questions: Question[];
+  durationMinutes: number;
+  imageUrl?: string;
+  createdAt: any;
+}
+
+export interface MockTestAttempt {
+  id: string;
+  userId: string;
+  mockTestId: string;
+  score: number;
+  totalQuestions: number;
+  subjectScores: Record<string, number>;
+  completedAt: any;
+  timeTakenSeconds: number;
 }

@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lecture, Quiz, Course, QuizAttempt } from './types';
+import { Lecture, Quiz, Course, QuizAttempt, MockTest } from './types';
 import { 
   BookOpen, 
   Brain, 
@@ -37,17 +37,19 @@ import {
   Edit2,
   Menu,
   X,
-  RotateCcw
+  RotateCcw,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
-export type ViewType = 'dashboard' | 'lectures' | 'quizzes' | 'courses' | 'history' | 'settings' | 'admin';
+export type ViewType = 'dashboard' | 'resources' | 'quizzes' | 'courses' | 'mock-tests' | 'history' | 'settings' | 'admin';
 
 export default function Dashboard({ 
   onOpenAdmin, 
   onSelectLecture,
   onSelectQuiz,
+  onSelectMockTest,
   onOpenReport,
   currentView,
   onViewChange
@@ -55,6 +57,7 @@ export default function Dashboard({
   onOpenAdmin: () => void, 
   onSelectLecture: (lecture: Lecture) => void,
   onSelectQuiz: (quiz: Quiz) => void,
+  onSelectMockTest: (test: MockTest) => void,
   onOpenReport: () => void,
   currentView: ViewType,
   onViewChange: (view: ViewType) => void
@@ -63,6 +66,7 @@ export default function Dashboard({
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [mockTests, setMockTests] = useState<MockTest[]>([]);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,6 +79,7 @@ export default function Dashboard({
   const [isSavingName, setIsSavingName] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [resourceTab, setResourceTab] = useState<'video' | 'audio' | 'pdf'>('video');
 
   useEffect(() => {
     const qL = query(collection(db, 'lectures'), orderBy('createdAt', 'desc'), limit(100));
@@ -112,11 +117,19 @@ export default function Dashboard({
       handleFirestoreError(error, OperationType.LIST, 'quizAttempts');
     });
 
+    const qMT = query(collection(db, 'mockTests'), orderBy('createdAt', 'desc'), limit(50));
+    const unsubMT = onSnapshot(qMT, (snapshot) => {
+      setMockTests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MockTest)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'mockTests');
+    });
+
     return () => {
       unsubL();
       unsubQ();
       unsubC();
       unsubQA();
+      unsubMT();
     };
   }, [profile.uid]);
 
@@ -128,7 +141,8 @@ export default function Dashboard({
       l.topic.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSubject = !selectedSubject || l.subject === selectedSubject;
     const matchesTopic = !selectedTopic || l.topic === selectedTopic;
-    return matchesSearch && matchesSubject && matchesTopic;
+    const matchesTab = l.type === resourceTab;
+    return matchesSearch && matchesSubject && matchesTopic && matchesTab;
   });
 
   const availableTopics = Array.from(new Set(
@@ -152,7 +166,7 @@ export default function Dashboard({
     return matchesSearch && matchesSubject;
   });
 
-  const completedLectures = lectures.filter(l => profile.completedLectures?.includes(l.id));
+  const completedLectures = lectures.filter(l => profile.completedResources?.includes(l.id));
 
   const handleGetStudyPlan = () => {
     toast.info("Study plan feature coming soon!", {
@@ -180,13 +194,13 @@ export default function Dashboard({
   const handleResetProgress = async () => {
     if (!profile || isResetting) return;
     
-    const confirm = window.confirm("Are you sure you want to reset all your lecture progress? This cannot be undone.");
+    const confirm = window.confirm("Are you sure you want to reset all your resource progress? This cannot be undone.");
     if (!confirm) return;
 
     setIsResetting(true);
     try {
       await updateDoc(doc(db, 'users', profile.uid), {
-        completedLectures: []
+        completedResources: []
       });
       toast.success("Progress reset successfully");
     } catch (error) {
@@ -203,7 +217,7 @@ export default function Dashboard({
 
   const renderContent = () => {
     switch (currentView) {
-      case 'lectures':
+      case 'resources':
         return (
           <section className="space-y-6">
             <div className="flex items-center justify-between mb-6">
@@ -212,7 +226,7 @@ export default function Dashboard({
                   <BookOpen className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-black uppercase tracking-widest">All Lectures</h3>
+                  <h3 className="text-xs font-black uppercase tracking-widest">Study Resources</h3>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Browse your curriculum</p>
                 </div>
               </div>
@@ -309,10 +323,40 @@ export default function Dashboard({
               </div>
             </div>
 
+            <div className="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
+              <Button 
+                variant={resourceTab === 'video' ? 'default' : 'outline'}
+                size="sm"
+                className="rounded-xl h-9 text-[10px] uppercase font-bold whitespace-nowrap"
+                onClick={() => setResourceTab('video')}
+              >
+                <Play className="w-3 h-3 mr-2" />
+                Video Lectures
+              </Button>
+              <Button 
+                variant={resourceTab === 'audio' ? 'default' : 'outline'}
+                size="sm"
+                className="rounded-xl h-9 text-[10px] uppercase font-bold whitespace-nowrap"
+                onClick={() => setResourceTab('audio')}
+              >
+                <Mic className="w-3 h-3 mr-2" />
+                Discussion
+              </Button>
+              <Button 
+                variant={resourceTab === 'pdf' ? 'default' : 'outline'}
+                size="sm"
+                className="rounded-xl h-9 text-[10px] uppercase font-bold whitespace-nowrap"
+                onClick={() => setResourceTab('pdf')}
+              >
+                <FileText className="w-3 h-3 mr-2" />
+                Notes
+              </Button>
+            </div>
+
             <div className="relative mb-6">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
-                placeholder="Search all lectures..." 
+                placeholder={`Search ${resourceTab === 'video' ? 'lectures' : resourceTab === 'audio' ? 'discussions' : 'notes'}...`} 
                 className="pl-10 h-12 bg-secondary/50 border-border/50 rounded-2xl"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -328,12 +372,12 @@ export default function Dashboard({
                     key={lecture.id} 
                     lecture={lecture} 
                     onClick={() => onSelectLecture(lecture)} 
-                    isCompleted={profile.completedLectures?.includes(lecture.id)}
+                    isCompleted={profile.completedResources?.includes(lecture.id)}
                   />
                 ))
               ) : (
                 <div className="p-12 text-center border border-dashed border-border rounded-3xl">
-                  <p className="text-xs text-muted-foreground uppercase tracking-widest">No lectures found</p>
+                  <p className="text-xs text-muted-foreground uppercase tracking-widest">No {resourceTab === 'video' ? 'lectures' : resourceTab === 'audio' ? 'discussions' : 'notes'} found</p>
                 </div>
               )}
             </div>
@@ -443,6 +487,33 @@ export default function Dashboard({
           </section>
         );
 
+      case 'mock-tests':
+        return (
+          <section className="space-y-6">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="p-2 bg-primary/10 rounded-xl">
+                <Trophy className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-widest">Mock Tests</h3>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Full-length exam practice</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {mockTests.filter(mt => mt.exam === profile.exam).length > 0 ? (
+                mockTests.filter(mt => mt.exam === profile.exam).map(test => (
+                  <MockTestItem key={test.id} test={test} onStart={() => onSelectMockTest(test)} />
+                ))
+              ) : (
+                <div className="p-12 text-center border border-dashed border-border rounded-3xl">
+                  <p className="text-xs text-muted-foreground uppercase tracking-widest">No mock tests available for {profile.exam}</p>
+                </div>
+              )}
+            </div>
+          </section>
+        );
+
       case 'history':
         return (
           <section className="space-y-8">
@@ -452,8 +523,8 @@ export default function Dashboard({
                   <History className="w-5 h-5 text-blue-500" />
                 </div>
                 <div>
-                  <h3 className="text-xs font-black uppercase tracking-widest">Lecture History</h3>
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Your completed lessons</p>
+                  <h3 className="text-xs font-black uppercase tracking-widest">Study History</h3>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Your completed resources</p>
                 </div>
               </div>
               
@@ -469,7 +540,7 @@ export default function Dashboard({
                   ))
                 ) : (
                   <div className="p-12 text-center border border-dashed border-border rounded-3xl">
-                    <p className="text-xs text-muted-foreground uppercase tracking-widest">No lectures completed yet</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-widest">No resources completed yet</p>
                   </div>
                 )}
               </div>
@@ -600,8 +671,8 @@ export default function Dashboard({
             <section className="grid grid-cols-2 gap-4">
               <StatCard 
                 icon={<BookOpen className="w-4 h-4 text-primary" />} 
-                label="Completed" 
-                value={profile.completedLectures?.length || 0} 
+                label="Resources" 
+                value={profile.completedResources?.length || 0} 
                 onClick={() => onViewChange('history')}
               />
               <StatCard 
@@ -617,13 +688,13 @@ export default function Dashboard({
               <div className="flex justify-between items-center">
                 <h3 className="text-xs font-black uppercase tracking-widest flex items-center gap-2">
                   <Play className="w-4 h-4 text-primary" />
-                  Latest Lectures
+                  Latest Resources
                 </h3>
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   className="text-[10px] uppercase font-bold text-muted-foreground"
-                  onClick={() => onViewChange('lectures')}
+                  onClick={() => onViewChange('resources')}
                 >
                   View All
                 </Button>
@@ -638,7 +709,7 @@ export default function Dashboard({
                   ))
                 ) : (
                   <div className="p-12 text-center border border-dashed border-border rounded-3xl">
-                    <p className="text-xs text-muted-foreground uppercase tracking-widest">No lectures found</p>
+                    <p className="text-xs text-muted-foreground uppercase tracking-widest">No resources found</p>
                   </div>
                 )}
               </div>
@@ -728,15 +799,21 @@ export default function Dashboard({
           />
           <NavIcon 
             icon={<BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />} 
-            label="Lectures" 
-            active={currentView === 'lectures'} 
-            onClick={() => onViewChange('lectures')}
+            label="Resources" 
+            active={currentView === 'resources'} 
+            onClick={() => onViewChange('resources')}
           />
           <NavIcon 
             icon={<Brain className="w-4 h-4 sm:w-5 sm:h-5" />} 
             label="Quizzes" 
             active={currentView === 'quizzes'} 
             onClick={() => onViewChange('quizzes')}
+          />
+          <NavIcon 
+            icon={<Trophy className="w-4 h-4 sm:w-5 sm:h-5" />} 
+            label="Mocks" 
+            active={currentView === 'mock-tests'} 
+            onClick={() => onViewChange('mock-tests')}
           />
           <NavIcon 
             icon={<History className="w-4 h-4 sm:w-5 sm:h-5" />} 
@@ -774,7 +851,9 @@ function LectureItem({ lecture, onClick, isCompleted }: { lecture: Lecture, onCl
             <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6" />
           </motion.div>
         ) : (
-          lecture.type === 'audio' ? <Mic className="w-4 h-4 sm:w-5 sm:h-5" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5" />
+          lecture.type === 'audio' ? <Mic className="w-4 h-4 sm:w-5 sm:h-5" /> : 
+          lecture.type === 'pdf' ? <FileText className="w-4 h-4 sm:w-5 sm:h-5" /> :
+          <Play className="w-4 h-4 sm:w-5 sm:h-5" />
         )}
       </div>
       <div className="flex-1 min-w-0">
@@ -786,6 +865,35 @@ function LectureItem({ lecture, onClick, isCompleted }: { lecture: Lecture, onCl
         <p className="text-[9px] sm:text-[10px] text-muted-foreground truncate">{lecture.description}</p>
       </div>
       <ChevronRight className={`w-4 h-4 transition-colors flex-shrink-0 ${isCompleted ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
+    </motion.div>
+  );
+}
+
+function MockTestItem({ test, onStart }: { test: MockTest, onStart: () => void }) {
+  return (
+    <motion.div 
+      whileHover={{ scale: 1.01, x: 4 }}
+      whileTap={{ scale: 0.99 }}
+      className="p-4 rounded-2xl border border-border bg-secondary/20 hover:bg-secondary/40 transition-all cursor-pointer flex items-center gap-4 group"
+      onClick={onStart}
+    >
+      <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors overflow-hidden">
+        {test.imageUrl ? (
+          <img src={test.imageUrl} alt={test.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+        ) : (
+          <Trophy className="w-6 h-6" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex gap-2 mb-1">
+          <Badge variant="secondary" className="text-[8px] uppercase">{test.exam}</Badge>
+          <Badge variant="outline" className="text-[8px] uppercase">{test.durationMinutes} Mins</Badge>
+          <Badge variant="outline" className="text-[8px] uppercase">{test.questions.length} Questions</Badge>
+        </div>
+        <h4 className="text-sm font-bold truncate">{test.title}</h4>
+        <p className="text-[10px] text-muted-foreground truncate">{test.description}</p>
+      </div>
+      <Button size="sm" className="rounded-xl font-bold uppercase text-[10px]">Start</Button>
     </motion.div>
   );
 }

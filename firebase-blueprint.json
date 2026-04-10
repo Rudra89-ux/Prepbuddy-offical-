@@ -101,6 +101,34 @@
         "quizIds": { "type": "array", "items": { "type": "string" } },
         "createdAt": { "type": "string", "format": "date-time" }
       }
+    },
+    "MockTest": {
+      "title": "MockTest",
+      "description": "A full-length mock exam",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "exam": { "type": "string", "enum": ["JEE", "NEET"] },
+        "questions": { "type": "array", "items": { "$ref": "Question" } },
+        "durationMinutes": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "MockTestAttempt": {
+      "title": "MockTestAttempt",
+      "description": "User's attempt at a mock test",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "mockTestId": { "type": "string" },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "subjectScores": { "type": "object" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "timeTakenSeconds": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -131,6 +159,14 @@
     "/courses/{courseId}": {
       "schema": "Course",
       "description": "Structured courses"
+    },
+    "/mockTests/{testId}": {
+      "schema": "MockTest",
+      "description": "Full-length mock tests"
+    },
+    "/mockTestAttempts/{attemptId}": {
+      "schema": "MockTestAttempt",
+      "description": "User mock test attempts"
     }
   }
 }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Play, Info, Calendar, CheckCircle2, Loader2, Mic, Music } from 'lucide-react';
+import { ArrowLeft, Play, Info, Calendar, CheckCircle2, Loader2, Mic, Music, FileText, Download, ExternalLink } from 'lucide-react';
 import { Lecture } from './types';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from './AuthContext';
@@ -12,7 +12,7 @@ export default function LecturePlayer({ lecture, onBack }: { lecture: Lecture, o
   const { profile } = useAuth();
   const [completing, setCompleting] = useState(false);
 
-  const isCompleted = profile?.completedLectures?.includes(lecture.id);
+  const isCompleted = profile?.completedResources?.includes(lecture.id);
 
   // Convert Drive link to embed or direct stream link if necessary
   const getMediaUrl = (url: string | undefined | null) => {
@@ -36,9 +36,9 @@ export default function LecturePlayer({ lecture, onBack }: { lecture: Lecture, o
     try {
       const userRef = doc(db, 'users', profile.uid);
       await updateDoc(userRef, {
-        completedLectures: arrayUnion(lecture.id)
+        completedResources: arrayUnion(lecture.id)
       });
-      toast.success('Lecture marked as completed!');
+      toast.success('Resource marked as completed!');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
       toast.error('Failed to update progress');
@@ -93,6 +93,46 @@ export default function LecturePlayer({ lecture, onBack }: { lecture: Lecture, o
               </div>
             </div>
           </div>
+        ) : lecture.type === 'pdf' ? (
+          <div className="space-y-6">
+            <div className="w-full bg-secondary/20 rounded-3xl p-8 flex flex-col items-center justify-center gap-6 border border-border shadow-xl min-h-[400px]">
+              <div className="w-24 h-24 bg-yellow-500/10 rounded-full flex items-center justify-center">
+                <FileText className="w-12 h-12 text-yellow-500" />
+              </div>
+              <div className="text-center space-y-2">
+                <h3 className="text-lg font-bold uppercase tracking-tight">Study Notes</h3>
+                <p className="text-xs text-muted-foreground uppercase tracking-widest">PDF Document Available</p>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md">
+                <Button 
+                  className="flex-1 h-12 rounded-xl gap-2 font-bold uppercase text-xs"
+                  onClick={() => window.open(lecture.pdfUrl, '_blank')}
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Open PDF
+                </Button>
+                <a 
+                  href={lecture.pdfUrl} 
+                  download 
+                  className="flex-1"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button variant="outline" className="w-full h-12 rounded-xl gap-2 font-bold uppercase text-xs">
+                    <Download className="w-4 h-4" />
+                    Download
+                  </Button>
+                </a>
+              </div>
+              <div className="w-full h-[600px] rounded-2xl overflow-hidden border border-border bg-white hidden sm:block">
+                <iframe
+                  src={lecture.pdfUrl?.includes('drive.google.com') ? getMediaUrl(lecture.pdfUrl) : `${lecture.pdfUrl}#toolbar=0`}
+                  className="w-full h-full"
+                  title="PDF Viewer"
+                />
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="aspect-video w-full bg-black rounded-2xl overflow-hidden border border-border shadow-2xl">
             <iframe
@@ -124,10 +164,10 @@ export default function LecturePlayer({ lecture, onBack }: { lecture: Lecture, o
           <div className="p-4 rounded-2xl bg-secondary/30 border border-border space-y-2">
             <div className="flex items-center gap-2 text-primary">
               <Info className="w-4 h-4" />
-              <p className="text-[10px] font-black uppercase tracking-widest">About this lecture</p>
+              <p className="text-[10px] font-black uppercase tracking-widest">About this resource</p>
             </div>
             <p className="text-sm text-foreground/80 leading-relaxed">
-              {lecture.description || "No description provided for this lecture."}
+              {lecture.description || "No description provided for this resource."}
             </p>
           </div>
         </div>

@@ -13,17 +13,19 @@ import AdminPanel from './AdminPanel';
 
 import LecturePlayer from './LecturePlayer';
 import QuizPlayer from './QuizPlayer';
+import MockTestPlayer from './MockTestPlayer';
 import PerformanceReport from './PerformanceReport';
 import Checkout from './Checkout';
-import { Lecture, Quiz } from './types';
+import { Lecture, Quiz, MockTest } from './types';
 import { XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 function AppContent() {
   const { user, profile, loading, isAdmin, logout } = useAuth();
-  const [view, setView] = useState<ViewType | 'player' | 'quiz-player' | 'report' | 'checkout'>('dashboard');
+  const [view, setView] = useState<ViewType | 'player' | 'quiz-player' | 'mock-player' | 'report' | 'checkout'>('dashboard');
   const [selectedLecture, setSelectedLecture] = useState<Lecture | null>(null);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
+  const [selectedMockTest, setSelectedMockTest] = useState<MockTest | null>(null);
 
   if (loading) {
     return (
@@ -78,6 +80,10 @@ function AppContent() {
     return <QuizPlayer quiz={selectedQuiz} onBack={() => setView('quizzes')} />;
   }
 
+  if (view === 'mock-player' && selectedMockTest) {
+    return <MockTestPlayer test={selectedMockTest} onBack={() => setView('mock-tests')} />;
+  }
+
   if (view === 'report') {
     return <PerformanceReport onBack={() => setView('dashboard')} />;
   }
@@ -93,6 +99,10 @@ function AppContent() {
         onSelectQuiz={(quiz) => {
           setSelectedQuiz(quiz);
           setView('quiz-player');
+        }}
+        onSelectMockTest={(test) => {
+          setSelectedMockTest(test);
+          setView('mock-player');
         }}
         onOpenReport={() => setView('report')}
         currentView={view as ViewType}

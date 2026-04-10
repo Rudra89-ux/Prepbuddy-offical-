@@ -123,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       subscriptionStatus: isUserAdmin ? 'active' : 'none',
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp(),
-      completedLectures: []
+      completedResources: []
     };
 
     try {

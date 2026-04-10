@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ArrowLeft, CheckCircle2, XCircle, ChevronRight, Trophy, Loader2 } from 'lucide-react';
 import { Quiz, QuizAttempt } from './types';
 import { useAuth } from './AuthContext';
@@ -7,6 +9,7 @@ import { db, handleFirestoreError, OperationType, serverTimestamp } from './lib/
 import { collection, addDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
+import { MarkdownRenderer } from './components/MarkdownRenderer';
 
 export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () => void }) {
   const { user } = useAuth();
@@ -17,6 +20,7 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
   const [score, setScore] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [submittingAttempt, setSubmittingAttempt] = useState(false);
 
   useEffect(() => {
     // Shuffle questions on mount
@@ -26,17 +30,29 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
 
   const currentQuestion = shuffledQuestions[currentQuestionIndex];
 
-  const handleOptionSelect = (option: string) => {
+  const getDirectImageUrl = (url: string) => {
+    if (!url) return '';
+    if (url.includes('drive.google.com')) {
+      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        return `https://lh3.googleusercontent.com/d/${match[1]}`;
+      }
+    }
+    return url;
+  };
+
+  const handleOptionSelect = (letter: string) => {
     if (isSubmitted) return;
-    setSelectedOption(option);
+    setSelectedOption(letter);
   };
 
   const handleSubmit = () => {
     if (!selectedOption) return;
     setIsSubmitted(true);
-    if (selectedOption === currentQuestion.correctAnswer) {
+    if (selectedOption?.trim().toUpperCase() === currentQuestion.correctAnswer?.trim().toUpperCase()) {
       setScore(prev => prev + 1);
     }
+    // Quiz marking: +1 correct, 0 incorrect (already handled by only incrementing on correct)
   };
 
   const handleNext = async () => {
@@ -45,27 +61,37 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
       setSelectedOption(null);
       setIsSubmitted(false);
     } else {
-      setIsFinished(true);
-      await saveAttempt();
+      setSubmittingAttempt(true);
+      try {
+        await saveAttempt();
+        setIsFinished(true);
+      } finally {
+        setSubmittingAttempt(false);
+      }
     }
   };
 
   const saveAttempt = async () => {
-    if (!user) return;
+    if (!user) {
+      toast.error("User not authenticated. Please sign in again.");
+      return;
+    }
     setSaving(true);
     try {
       const attempt: Omit<QuizAttempt, 'id'> = {
         userId: user.uid,
         quizId: quiz.id,
-        score: score + (selectedOption === currentQuestion.correctAnswer ? 1 : 0),
+        score: score,
         totalQuestions: shuffledQuestions.length,
         subject: quiz.subject,
         topic: quiz.topic,
         completedAt: serverTimestamp()
       };
+      console.log("Submitting quiz attempt:", attempt);
       await addDoc(collection(db, 'quizAttempts'), attempt);
       toast.success('Quiz progress saved!');
     } catch (error) {
+      console.error("Quiz submission error:", error);
       handleFirestoreError(error, OperationType.CREATE, 'quizAttempts');
     } finally {
       setSaving(false);
@@ -116,41 +142,96 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
 
       <main className="flex-1 p-6 space-y-8">
         <div className="space-y-4">
-          <div className="p-6 rounded-3xl bg-secondary/20 border border-border">
-            <h2 className="text-lg font-bold leading-tight">{currentQuestion.text}</h2>
+          <div className="p-6 rounded-3xl bg-secondary/20 border border-border space-y-4">
+            <div className="text-lg font-bold leading-tight">
+              <MarkdownRenderer content={currentQuestion.text} />
+            </div>
+            {currentQuestion.imageUrl && (
+              <div className="space-y-2">
+                {currentQuestion.imageLabel && (
+                  <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest text-center">
+                    {currentQuestion.imageLabel}
+                  </p>
+                )}
+                <div className="rounded-2xl overflow-hidden border border-border bg-background max-h-[300px] flex items-center justify-center">
+                  <img 
+                    src={getDirectImageUrl(currentQuestion.imageUrl)} 
+                    alt={currentQuestion.imageLabel || "Question Diagram"} 
+                    className="max-w-full max-h-full object-contain" 
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 gap-3">
-            {currentQuestion.options?.map((option, i) => {
-              const optionLetter = String.fromCharCode(65 + i);
-              const isCorrect = optionLetter === currentQuestion.correctAnswer;
-              const isSelected = selectedOption === optionLetter;
-              
-              let variantClass = "border-border bg-secondary/10";
-              if (isSubmitted) {
-                if (isCorrect) variantClass = "border-green-500 bg-green-500/10 text-green-500";
-                else if (isSelected) variantClass = "border-red-500 bg-red-500/10 text-red-500";
-              } else if (isSelected) {
-                variantClass = "border-primary bg-primary/10 text-primary";
-              }
+          {currentQuestion.type === 'MCQ' ? (
+            <div className="grid grid-cols-1 gap-3">
+              {currentQuestion.options?.map((option, i) => {
+                const optionLetter = String.fromCharCode(65 + i);
+                const isCorrect = optionLetter.toUpperCase() === currentQuestion.correctAnswer?.toUpperCase();
+                const isSelected = selectedOption?.toUpperCase() === optionLetter.toUpperCase();
+                
+                let variantClass = "border-border bg-secondary/10";
+                if (isSubmitted) {
+                  if (isCorrect) variantClass = "border-green-500 bg-green-500/10 text-green-500";
+                  else if (isSelected) variantClass = "border-red-500 bg-red-500/10 text-red-500";
+                } else if (isSelected) {
+                  variantClass = "border-primary bg-primary/10 text-primary";
+                }
 
-              return (
-                <motion.button
-                  key={i}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => handleOptionSelect(optionLetter)}
-                  className={`p-4 rounded-2xl border text-left flex items-center gap-4 transition-all ${variantClass}`}
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold flex-shrink-0 ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}>
-                    {optionLetter}
+                return (
+                  <motion.button
+                    key={i}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => handleOptionSelect(optionLetter)}
+                    className={`p-4 rounded-2xl border text-left flex items-center gap-4 transition-all ${variantClass}`}
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold flex-shrink-0 ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}>
+                      {optionLetter}
+                    </div>
+                    <div className="text-sm font-medium">
+                      <MarkdownRenderer content={option} />
+                    </div>
+                    {isSubmitted && isCorrect && <CheckCircle2 className="w-5 h-5 ml-auto text-green-500" />}
+                    {isSubmitted && isSelected && !isCorrect && <XCircle className="w-5 h-5 ml-auto text-red-500" />}
+                  </motion.button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Label className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">Your Answer (Numerical)</Label>
+              <div className="relative">
+                <Input 
+                  type="text" 
+                  placeholder="Enter numerical value..." 
+                  className={`h-16 text-xl font-bold rounded-2xl px-6 ${
+                    isSubmitted 
+                      ? selectedOption === currentQuestion.correctAnswer 
+                        ? 'border-green-500 bg-green-500/5 text-green-500' 
+                        : 'border-red-500 bg-red-500/5 text-red-500'
+                      : 'border-border bg-secondary/10 focus:border-primary'
+                  }`}
+                  value={selectedOption || ''}
+                  onChange={(e) => !isSubmitted && setSelectedOption(e.target.value)}
+                  disabled={isSubmitted}
+                />
+                {isSubmitted && (
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                    {selectedOption === currentQuestion.correctAnswer ? (
+                      <CheckCircle2 className="w-6 h-6 text-green-500" />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-green-500">Correct: {currentQuestion.correctAnswer}</span>
+                        <XCircle className="w-6 h-6 text-red-500" />
+                      </div>
+                    )}
                   </div>
-                  <span className="text-sm font-medium">{option}</span>
-                  {isSubmitted && isCorrect && <CheckCircle2 className="w-5 h-5 ml-auto text-green-500" />}
-                  {isSubmitted && isSelected && !isCorrect && <XCircle className="w-5 h-5 ml-auto text-red-500" />}
-                </motion.button>
-              );
-            })}
-          </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <AnimatePresence>
@@ -161,7 +242,9 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
               className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/20 space-y-2"
             >
               <p className="text-[10px] font-black uppercase text-blue-500 tracking-widest">Explanation</p>
-              <p className="text-xs text-foreground/80 leading-relaxed">{currentQuestion.explanation}</p>
+              <div className="text-xs text-foreground/80 leading-relaxed">
+                <MarkdownRenderer content={currentQuestion.explanation} />
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -179,10 +262,17 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
         ) : (
           <Button 
             onClick={handleNext} 
+            disabled={submittingAttempt}
             className="w-full h-12 rounded-xl font-bold uppercase gap-2"
           >
-            {currentQuestionIndex < shuffledQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'}
-            <ChevronRight className="w-4 h-4" />
+            {submittingAttempt ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <>
+                {currentQuestionIndex < shuffledQuestions.length - 1 ? 'Next Question' : 'Finish Quiz'}
+                <ChevronRight className="w-4 h-4" />
+              </>
+            )}
           </Button>
         )}
       </footer>

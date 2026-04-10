@@ -9,9 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap, Settings, XCircle, Mic } from 'lucide-react';
+import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap, Settings, XCircle, Mic, FileText, Upload, Trophy, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { Question, Subject, QuestionType, Lecture, Quiz, Course, UserProfile } from './types';
+import { Question, Subject, QuestionType, Lecture, Quiz, Course, UserProfile, MockTest, Exam } from './types';
+import { storage, ref, uploadBytes, getDownloadURL } from './lib/firebase';
+import { motion, AnimatePresence } from 'motion/react';
+import { MarkdownRenderer } from './components/MarkdownRenderer';
 
 export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const { user } = useAuth();
@@ -19,29 +22,35 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [mockTests, setMockTests] = useState<MockTest[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('lectures');
+  const [activeTab, setActiveTab] = useState('resources');
+  const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
+  const [quickAddSource, setQuickAddSource] = useState<'quiz' | 'mock-test' | null>(null);
   const [subPrice, setSubPrice] = useState('999');
   const [priceLoading, setPriceLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, type: string, title: string } | null>(null);
   
   // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingType, setEditingType] = useState<'question' | 'lecture' | 'quiz' | 'course' | null>(null);
+  const [editingType, setEditingType] = useState<'question' | 'lecture' | 'quiz' | 'course' | 'mock-test' | null>(null);
 
   // New Question Form
   const [newQ, setNewQ] = useState({
     subject: 'Physics' as Subject,
-    topic: '',
     difficulty: 1,
     text: '',
+    imageUrl: '',
+    imageLabel: '',
     options: ['', '', '', ''],
     correctAnswer: '',
     explanation: '',
     type: 'MCQ' as QuestionType
   });
 
-  // New Lecture Form
+  // New Resource Form
   const [newL, setNewL] = useState({
     title: '',
     description: '',
@@ -49,7 +58,8 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     topic: '',
     videoUrl: '',
     audioUrl: '',
-    type: 'video' as 'video' | 'audio'
+    pdfUrl: '',
+    type: 'video' as 'video' | 'audio' | 'pdf'
   });
 
   // New Quiz Form
@@ -70,11 +80,24 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     quizIds: [] as string[]
   });
 
+  // New Mock Test Form
+  const [newMockTest, setNewMockTest] = useState({
+    title: '',
+    description: '',
+    exam: 'JEE' as Exam,
+    durationMinutes: 180,
+    imageUrl: '',
+    selectedQuestionIds: [] as string[]
+  });
+
+  const [showMockQuestions, setShowMockQuestions] = useState(false);
+
   useEffect(() => {
     fetchQuestions();
     fetchLectures();
     fetchQuizzes();
     fetchCourses();
+    fetchMockTests();
     fetchUsers();
     fetchConfig();
   }, []);
@@ -129,6 +152,17 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     }
   };
 
+  const getDirectImageUrl = (url: string) => {
+    if (!url) return '';
+    if (url.includes('drive.google.com')) {
+      const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (match && match[1]) {
+        return `https://lh3.googleusercontent.com/d/${match[1]}`;
+      }
+    }
+    return url;
+  };
+
   const fetchLectures = async () => {
     try {
       const q = query(collection(db, 'lectures'), orderBy('createdAt', 'desc'));
@@ -136,7 +170,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Lecture));
       setLectures(fetched);
     } catch (error) {
-      console.error("Fetch lectures error:", error);
+      console.error("Fetch resources error:", error);
     }
   };
 
@@ -162,6 +196,79 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     }
   };
 
+  const fetchMockTests = async () => {
+    try {
+      const q = query(collection(db, 'mockTests'), orderBy('createdAt', 'desc'));
+      const snapshot = await getDocs(q);
+      const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MockTest));
+      setMockTests(fetched);
+    } catch (error) {
+      console.error("Fetch mock tests error:", error);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      toast.error("Please upload a PDF file");
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const storageRef = ref(storage, `notes/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      setNewL(prev => ({ ...prev, pdfUrl: url, type: 'pdf' }));
+      toast.success("PDF uploaded successfully");
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Failed to upload PDF");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleQuestionImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const storageRef = ref(storage, `questions/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      setNewQ(prev => ({ ...prev, imageUrl: url }));
+      toast.success("Diagram uploaded successfully");
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Failed to upload diagram");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleMockTestImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const storageRef = ref(storage, `mockTests/${Date.now()}_${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      setNewMockTest(prev => ({ ...prev, imageUrl: url }));
+      toast.success("Mock test image uploaded");
+    } catch (error) {
+      console.error("Upload error:", error);
+      toast.error("Failed to upload image");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleAddQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -170,8 +277,24 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
         await updateDoc(doc(db, 'questions', editingId), newQ);
         toast.success("Question updated");
       } else {
-        await addDoc(collection(db, 'questions'), newQ);
+        const docRef = await addDoc(collection(db, 'questions'), newQ);
         toast.success("Question added");
+        
+        if (isQuickAddModalOpen && quickAddSource) {
+          if (quickAddSource === 'quiz') {
+            setNewQuiz(prev => ({
+              ...prev,
+              selectedQuestionIds: [...prev.selectedQuestionIds, docRef.id]
+            }));
+          } else if (quickAddSource === 'mock-test') {
+            setNewMockTest(prev => ({
+              ...prev,
+              selectedQuestionIds: [...prev.selectedQuestionIds, docRef.id]
+            }));
+          }
+          setIsQuickAddModalOpen(false);
+          setQuickAddSource(null);
+        }
       }
       resetQuestionForm();
       fetchQuestions();
@@ -185,9 +308,10 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const resetQuestionForm = () => {
     setNewQ({
       subject: 'Physics',
-      topic: '',
       difficulty: 1,
       text: '',
+      imageUrl: '',
+      imageLabel: '',
       options: ['', '', '', ''],
       correctAnswer: '',
       explanation: '',
@@ -203,13 +327,13 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     try {
       if (editingId && editingType === 'lecture') {
         await updateDoc(doc(db, 'lectures', editingId), newL);
-        toast.success("Lecture updated");
+        toast.success("Resource updated");
       } else {
         await addDoc(collection(db, 'lectures'), {
           ...newL,
           createdAt: serverTimestamp()
         });
-        toast.success("Lecture uploaded");
+        toast.success("Resource uploaded");
       }
       resetLectureForm();
       fetchLectures();
@@ -228,6 +352,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       topic: '',
       videoUrl: '',
       audioUrl: '',
+      pdfUrl: '',
       type: 'video'
     });
     setEditingId(null);
@@ -334,11 +459,61 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const handleDeleteLecture = async (id: string) => {
     try {
       await deleteDoc(doc(db, 'lectures', id));
-      toast.success("Lecture deleted");
+      toast.success("Resource deleted");
       fetchLectures();
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `lectures/${id}`);
     }
+  };
+
+  const handleAddMockTest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newMockTest.selectedQuestionIds.length === 0) {
+      toast.error("Please select at least one question");
+      return;
+    }
+    setLoading(true);
+    try {
+      const selectedQuestions = questions.filter(q => newMockTest.selectedQuestionIds.includes(q.id));
+      const testData = {
+        title: newMockTest.title,
+        description: newMockTest.description,
+        exam: newMockTest.exam,
+        durationMinutes: newMockTest.durationMinutes,
+        imageUrl: newMockTest.imageUrl,
+        questions: selectedQuestions,
+      };
+
+      if (editingId && editingType === 'mock-test') {
+        await updateDoc(doc(db, 'mockTests', editingId), testData);
+        toast.success("Mock test updated");
+      } else {
+        await addDoc(collection(db, 'mockTests'), {
+          ...testData,
+          createdAt: serverTimestamp()
+        });
+        toast.success("Mock test created");
+      }
+      resetMockTestForm();
+      fetchMockTests();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'mockTests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetMockTestForm = () => {
+    setNewMockTest({
+      title: '',
+      description: '',
+      exam: 'JEE',
+      durationMinutes: 180,
+      imageUrl: '',
+      selectedQuestionIds: []
+    });
+    setEditingId(null);
+    setEditingType(null);
   };
 
   const handleDeleteQuiz = async (id: string) => {
@@ -361,14 +536,25 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     }
   };
 
+  const handleDeleteMockTest = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'mockTests', id));
+      toast.success("Mock test deleted");
+      fetchMockTests();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `mockTests/${id}`);
+    }
+  };
+
   const startEditQuestion = (q: Question) => {
     setEditingId(q.id);
     setEditingType('question');
     setNewQ({
       subject: q.subject,
-      topic: q.topic,
       difficulty: q.difficulty,
       text: q.text,
+      imageUrl: q.imageUrl || '',
+      imageLabel: q.imageLabel || '',
       options: q.options || ['', '', '', ''],
       correctAnswer: q.correctAnswer,
       explanation: q.explanation,
@@ -386,6 +572,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       topic: l.topic,
       videoUrl: l.videoUrl || '',
       audioUrl: l.audioUrl || '',
+      pdfUrl: l.pdfUrl || '',
       type: l.type || 'video'
     });
   };
@@ -414,6 +601,19 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     });
   };
 
+  const startEditMockTest = (t: MockTest) => {
+    setEditingId(t.id);
+    setEditingType('mock-test');
+    setNewMockTest({
+      title: t.title,
+      description: t.description,
+      exam: t.exam,
+      durationMinutes: t.durationMinutes,
+      imageUrl: t.imageUrl || '',
+      selectedQuestionIds: t.questions.map(q => q.id)
+    });
+  };
+
   const toggleQuestionSelection = (id: string) => {
     setNewQuiz(prev => ({
       ...prev,
@@ -438,6 +638,15 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       quizIds: prev.quizIds.includes(id)
         ? prev.quizIds.filter(qid => qid !== id)
         : [...prev.quizIds, id]
+    }));
+  };
+
+  const toggleMockQuestionSelection = (id: string) => {
+    setNewMockTest(prev => ({
+      ...prev,
+      selectedQuestionIds: prev.selectedQuestionIds.includes(id)
+        ? prev.selectedQuestionIds.filter(qid => qid !== id)
+        : [...prev.selectedQuestionIds, id]
     }));
   };
 
@@ -517,14 +726,14 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
 
       <main className="flex-1 p-4 sm:p-6 overflow-hidden">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <div className="grid grid-cols-2 sm:grid-cols-7 gap-2 mb-6">
+          <div className="grid grid-cols-2 sm:grid-cols-8 gap-2 mb-6">
             <Button 
-              variant={activeTab === 'lectures' ? 'default' : 'outline'}
+              variant={activeTab === 'resources' ? 'default' : 'outline'}
               className="h-16 flex flex-col gap-1 border-primary/20 bg-primary/5 hover:bg-primary/10"
-              onClick={() => setActiveTab('lectures')}
+              onClick={() => setActiveTab('resources')}
             >
               <BookOpen className="w-5 h-5 text-primary" />
-              <span className="text-[10px] uppercase font-bold">Lectures</span>
+              <span className="text-[10px] uppercase font-bold">Video Lectures</span>
             </Button>
             <Button 
               variant={activeTab === 'discussions' ? 'default' : 'outline'}
@@ -536,6 +745,17 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
             >
               <Mic className="w-5 h-5 text-pink-500" />
               <span className="text-[10px] uppercase font-bold text-center">Topic Discussion</span>
+            </Button>
+            <Button 
+              variant={activeTab === 'notes' ? 'default' : 'outline'}
+              className="h-16 flex flex-col gap-1 border-yellow-500/20 bg-yellow-500/5 hover:bg-yellow-500/10"
+              onClick={() => {
+                setActiveTab('notes');
+                setNewL({ ...newL, type: 'pdf' });
+              }}
+            >
+              <FileText className="w-5 h-5 text-yellow-500" />
+              <span className="text-[10px] uppercase font-bold">Notes</span>
             </Button>
             <Button 
               variant={activeTab === 'quizzes' ? 'default' : 'outline'}
@@ -552,6 +772,14 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
             >
               <GraduationCap className="w-5 h-5 text-purple-500" />
               <span className="text-[10px] uppercase font-bold">Courses</span>
+            </Button>
+            <Button 
+              variant={activeTab === 'mock-tests' ? 'default' : 'outline'}
+              className="h-16 flex flex-col gap-1 border-red-500/20 bg-red-500/5 hover:bg-red-500/10"
+              onClick={() => setActiveTab('mock-tests')}
+            >
+              <Trophy className="w-5 h-5 text-red-500" />
+              <span className="text-[10px] uppercase font-bold">Mock Tests</span>
             </Button>
             <Button 
               variant={activeTab === 'questions' ? 'default' : 'outline'}
@@ -676,6 +904,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                                   topic: l.topic,
                                   videoUrl: l.videoUrl || '',
                                   audioUrl: l.audioUrl || '',
+                                  pdfUrl: l.pdfUrl || '',
                                   type: l.type || 'video'
                                 });
                                 setActiveTab('lectures');
@@ -788,6 +1017,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                                   topic: l.topic,
                                   videoUrl: l.videoUrl || '',
                                   audioUrl: l.audioUrl || '',
+                                  pdfUrl: l.pdfUrl || '',
                                   type: l.type
                                 });
                                 setActiveTab('discussions');
@@ -800,6 +1030,142 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                               size="icon" 
                               className="text-black hover:bg-black/10"
                               onClick={() => handleDeleteLecture(l.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="notes" className="flex-1 overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+              <Card className="premium-card h-fit">
+                <CardHeader>
+                  <CardTitle className="text-sm uppercase tracking-widest">{editingId && editingType === 'lecture' ? 'Edit Note' : 'Add New Note'}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAddLecture} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Title</Label>
+                      <Input value={newL.title} onChange={e => setNewL({...newL, title: e.target.value, type: 'pdf'})} placeholder="Note Title" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Subject</Label>
+                      <select 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                        value={newL.subject}
+                        onChange={e => setNewL({...newL, subject: e.target.value as Subject})}
+                      >
+                        <option>Physics</option>
+                        <option>Chemistry</option>
+                        <option>Maths</option>
+                        <option>Biology</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Topic</Label>
+                      <Input value={newL.topic} onChange={e => setNewL({...newL, topic: e.target.value})} placeholder="Topic" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">PDF File (Upload or Link)</Label>
+                      <div className="flex flex-col gap-2">
+                        <Input 
+                          type="file" 
+                          accept=".pdf" 
+                          onChange={handleFileUpload} 
+                          className="text-xs"
+                        />
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t border-border" />
+                          </div>
+                          <div className="relative flex justify-center text-[8px] uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">Or provide link</span>
+                          </div>
+                        </div>
+                        <Input 
+                          value={newL.pdfUrl} 
+                          onChange={e => setNewL({...newL, pdfUrl: e.target.value, type: 'pdf'})} 
+                          placeholder="Google Drive Link or PDF URL" 
+                          className="text-xs"
+                        />
+                        {uploading && <div className="flex items-center gap-2 text-[10px] text-primary"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</div>}
+                        {newL.pdfUrl && <div className="text-[10px] text-green-500 font-bold">✓ PDF Ready</div>}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Description</Label>
+                      <textarea 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm h-24"
+                        value={newL.description}
+                        onChange={e => setNewL({...newL, description: e.target.value})}
+                        placeholder="Brief description..."
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="submit" className="flex-1" disabled={loading || uploading}>
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingId && editingType === 'lecture' ? 'Update' : 'Save Note')}
+                      </Button>
+                      {editingId && editingType === 'lecture' && (
+                        <Button type="button" variant="outline" onClick={resetLectureForm}>Cancel</Button>
+                      )}
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card className="premium-card lg:col-span-2 flex flex-col overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm uppercase tracking-widest">Existing Notes</CardTitle>
+                  <Badge variant="secondary">{lectures.filter(l => l.type === 'pdf').length} PDF Files</Badge>
+                </CardHeader>
+                <CardContent className="flex-1 overflow-hidden p-0">
+                  <ScrollArea className="h-[600px]">
+                    <div className="p-4 space-y-4">
+                      {lectures.filter(l => l.type === 'pdf').map(l => (
+                        <div key={l.id} className="p-4 rounded-lg border border-border bg-secondary/20 flex justify-between items-start group">
+                          <div className="space-y-1">
+                            <div className="flex gap-2">
+                              <Badge variant="secondary" className="text-[8px] uppercase">{l.subject}</Badge>
+                              <Badge variant="outline" className="text-[8px] uppercase">{l.topic}</Badge>
+                            </div>
+                            <p className="text-sm font-bold">{l.title}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-1">{l.description}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-muted-foreground hover:text-primary"
+                              onClick={() => {
+                                setEditingId(l.id);
+                                setEditingType('lecture');
+                                setNewL({
+                                  title: l.title,
+                                  description: l.description,
+                                  subject: l.subject,
+                                  topic: l.topic,
+                                  videoUrl: l.videoUrl || '',
+                                  audioUrl: l.audioUrl || '',
+                                  pdfUrl: l.pdfUrl || '',
+                                  type: l.type
+                                });
+                                setActiveTab('notes');
+                              }}
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-red-500 hover:bg-red-500/10"
+                              onClick={() => setDeleteConfirm({ id: l.id, type: 'lecture', title: l.title })}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -843,7 +1209,21 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                       <Input value={newQuiz.topic} onChange={e => setNewQuiz({...newQuiz, topic: e.target.value})} placeholder="Topic" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px] uppercase">Selected Questions ({newQuiz.selectedQuestionIds.length})</Label>
+                      <div className="flex justify-between items-center">
+                        <Label className="text-[10px] uppercase">Selected Questions ({newQuiz.selectedQuestionIds.length})</Label>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-[8px] uppercase gap-1"
+                          onClick={() => {
+                            setQuickAddSource('quiz');
+                            setIsQuickAddModalOpen(true);
+                          }}
+                        >
+                          <Plus className="w-3 h-3" /> New Question
+                        </Button>
+                      </div>
                       <ScrollArea className="h-48 border border-border rounded-md p-2">
                         <div className="space-y-2">
                           {questions.filter(q => q.subject === newQuiz.subject).map(q => (
@@ -888,7 +1268,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <p className="text-sm font-bold">{q.title}</p>
                             <p className="text-xs text-muted-foreground line-clamp-1">{q.description}</p>
                           </div>
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex gap-2">
                             <Button 
                               variant="ghost" 
                               size="icon" 
@@ -900,8 +1280,8 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="text-black hover:bg-black/10"
-                              onClick={() => handleDeleteQuiz(q.id)}
+                              className="text-red-500 hover:bg-red-500/10"
+                              onClick={() => setDeleteConfirm({ id: q.id, type: 'quiz', title: q.title })}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -1001,7 +1381,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             </div>
                             <p className="text-sm font-bold">{c.title}</p>
                           </div>
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex gap-2">
                             <Button 
                               variant="ghost" 
                               size="icon" 
@@ -1013,8 +1393,204 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="text-black hover:bg-black/10"
-                              onClick={() => handleDeleteCourse(c.id)}
+                              className="text-red-500 hover:bg-red-500/10"
+                              onClick={() => setDeleteConfirm({ id: c.id, type: 'course', title: c.title })}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="mock-tests" className="flex-1 overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+              <Card className="premium-card h-fit">
+                <CardHeader>
+                  <CardTitle className="text-sm uppercase tracking-widest">{editingId && editingType === 'mock-test' ? 'Edit Mock Test' : 'Create Mock Test'}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAddMockTest} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Title</Label>
+                      <Input value={newMockTest.title} onChange={e => setNewMockTest({...newMockTest, title: e.target.value})} placeholder="Mock Test Title" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Exam</Label>
+                      <select 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                        value={newMockTest.exam}
+                        onChange={e => setNewMockTest({...newMockTest, exam: e.target.value as Exam})}
+                      >
+                        <option value="JEE">JEE</option>
+                        <option value="NEET">NEET</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Duration (Minutes)</Label>
+                      <Input type="number" value={newMockTest.durationMinutes} onChange={e => setNewMockTest({...newMockTest, durationMinutes: parseInt(e.target.value)})} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Description</Label>
+                      <textarea 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm h-20"
+                        value={newMockTest.description}
+                        onChange={e => setNewMockTest({...newMockTest, description: e.target.value})}
+                        placeholder="Brief description..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Mock Test Image (Optional)</Label>
+                      <div className="flex items-center gap-4">
+                        <Input type="file" accept="image/*" onChange={handleMockTestImageUpload} className="hidden" id="mock-test-image-upload" />
+                        <Label htmlFor="mock-test-image-upload" className="flex items-center gap-2 px-4 py-2 bg-secondary/50 border border-border rounded-md cursor-pointer hover:bg-secondary transition-colors text-xs">
+                          <Upload className="w-4 h-4" /> {newMockTest.imageUrl ? 'Change Image' : 'Upload Image'}
+                        </Label>
+                        {newMockTest.imageUrl && (
+                          <div className="relative w-12 h-12 rounded border border-border overflow-hidden">
+                            <img src={newMockTest.imageUrl} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <button 
+                              type="button"
+                              onClick={() => setNewMockTest({...newMockTest, imageUrl: ''})}
+                              className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-2">
+                      <p className="text-[10px] font-bold uppercase text-blue-500">Exam Structure Requirements</p>
+                      <div className="grid grid-cols-2 gap-2 text-[9px] text-muted-foreground">
+                        <div>
+                          <p className="font-bold text-foreground">NEET (200 Qs):</p>
+                          <ul className="list-disc ml-3">
+                            <li>50 Physics</li>
+                            <li>50 Chemistry</li>
+                            <li>50 Biology</li>
+                            <li>50 Botany</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <p className="font-bold text-foreground">JEE (75 Qs):</p>
+                          <ul className="list-disc ml-3">
+                            <li>20 Obj + 5 Num (Physics)</li>
+                            <li>20 Obj + 5 Num (Chem)</li>
+                            <li>20 Obj + 5 Num (Maths)</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          <Label className="text-[10px] uppercase">Select Questions ({newMockTest.selectedQuestionIds.length})</Label>
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6"
+                            onClick={() => setShowMockQuestions(!showMockQuestions)}
+                            title={showMockQuestions ? "Hide Questions" : "Show Previous Questions"}
+                          >
+                            <ChevronDown className={`w-4 h-4 transition-transform ${showMockQuestions ? 'rotate-180' : ''}`} />
+                          </Button>
+                        </div>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-[8px] uppercase gap-1"
+                          onClick={() => {
+                            setQuickAddSource('mock-test');
+                            setIsQuickAddModalOpen(true);
+                          }}
+                        >
+                          <Plus className="w-3 h-3" /> New Question
+                        </Button>
+                      </div>
+                      {showMockQuestions && (
+                        <ScrollArea className="h-60 border border-border rounded-md p-2">
+                          <div className="space-y-2">
+                            {questions.map(q => (
+                              <div 
+                                key={q.id} 
+                                className={`p-2 rounded border cursor-pointer flex justify-between items-center transition-all ${
+                                  newMockTest.selectedQuestionIds.includes(q.id) ? 'bg-primary/10 border-primary' : 'bg-secondary/20 border-border'
+                                }`}
+                                onClick={() => toggleMockQuestionSelection(q.id)}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-bold uppercase text-muted-foreground">{q.subject}</p>
+                                  <p className="text-xs truncate">{q.text}</p>
+                                </div>
+                                {newMockTest.selectedQuestionIds.includes(q.id) && <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />}
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="submit" className="flex-1" disabled={loading}>
+                        {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingId && editingType === 'mock-test' ? 'Update' : 'Create')}
+                      </Button>
+                      {editingId && editingType === 'mock-test' && (
+                        <Button type="button" variant="outline" onClick={resetMockTestForm}>Cancel</Button>
+                      )}
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card className="premium-card lg:col-span-2 flex flex-col overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-sm uppercase tracking-widest">Existing Mock Tests</CardTitle>
+                  <Badge variant="secondary">{mockTests.length} Tests</Badge>
+                </CardHeader>
+                <CardContent className="flex-1 overflow-hidden p-0">
+                  <ScrollArea className="h-[600px]">
+                    <div className="p-4 space-y-4">
+                      {mockTests.map(t => (
+                        <div key={t.id} className="p-4 rounded-lg border border-border bg-secondary/20 flex justify-between items-start group">
+                          <div className="flex gap-4">
+                            <div className="w-16 h-16 rounded-lg bg-background border border-border overflow-hidden flex-shrink-0 flex items-center justify-center">
+                              {t.imageUrl ? (
+                                <img src={t.imageUrl} alt={t.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              ) : (
+                                <Trophy className="w-6 h-6 text-muted-foreground/20" />
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex gap-2">
+                                <Badge variant="secondary" className="text-[8px] uppercase">{t.exam}</Badge>
+                                <Badge variant="outline" className="text-[8px] uppercase">{t.durationMinutes} Mins</Badge>
+                                <Badge variant="outline" className="text-[8px] uppercase">{t.questions.length} Qs</Badge>
+                              </div>
+                              <p className="text-sm font-bold">{t.title}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-1">{t.description}</p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-muted-foreground hover:text-primary"
+                              onClick={() => startEditMockTest(t)}
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-red-500 hover:bg-red-500/10"
+                              onClick={() => setDeleteConfirm({ id: t.id, type: 'mock-test', title: t.title })}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -1036,7 +1612,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handleAddQuestion} className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label className="text-[10px] uppercase">Subject</Label>
                         <select 
@@ -1054,37 +1630,133 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                         <Label className="text-[10px] uppercase">Difficulty</Label>
                         <Input type="number" min="1" max="5" value={newQ.difficulty} onChange={e => setNewQ({...newQ, difficulty: parseInt(e.target.value)})} />
                       </div>
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase">Type</Label>
+                        <select 
+                          className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                          value={newQ.type}
+                          onChange={e => setNewQ({...newQ, type: e.target.value as QuestionType})}
+                        >
+                          <option value="MCQ">MCQ</option>
+                          <option value="Numerical">Numerical</option>
+                        </select>
+                      </div>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px] uppercase">Topic</Label>
-                      <Input value={newQ.topic} onChange={e => setNewQ({...newQ, topic: e.target.value})} placeholder="Topic" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-[10px] uppercase">Question Text</Label>
+                      <div className="flex justify-between items-center">
+                        <Label className="text-[10px] uppercase">Question Text</Label>
+                        <div className="flex gap-2">
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="xs" 
+                            className="h-6 text-[8px] uppercase px-2"
+                            onClick={() => setNewQ({...newQ, text: newQ.text + "\n\n| Column I | Column II |\n| :--- | :--- |\n| (A) Item 1 | (P) Item 3 |\n| (B) Item 2 | (Q) Item 4 |\n| (C) Item 3 | (R) Item 5 |\n| (D) Item 4 | (S) Item 6 |\n"})}
+                          >
+                            Match Template
+                          </Button>
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            size="xs" 
+                            className="h-6 text-[8px] uppercase px-2"
+                            onClick={() => setNewQ({...newQ, text: newQ.text + "\n\n* Item 1\n* Item 2\n* Item 3\n"})}
+                          >
+                            List Template
+                          </Button>
+                        </div>
+                      </div>
                       <textarea 
                         className="w-full bg-background border border-border rounded-md p-2 text-sm h-24"
                         value={newQ.text}
                         onChange={e => setNewQ({...newQ, text: e.target.value})}
                       />
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {newQ.options.map((opt, i) => (
-                        <Input 
-                          key={i}
-                          placeholder={`Option ${String.fromCharCode(65+i)}`}
-                          value={opt}
-                          onChange={e => {
-                            const next = [...newQ.options];
-                            next[i] = e.target.value;
-                            setNewQ({...newQ, options: next});
-                          }}
-                        />
-                      ))}
+                      {newQ.text && (
+                        <div className="p-2 border border-border rounded bg-secondary/20 text-xs">
+                          <p className="text-[8px] uppercase text-muted-foreground mb-1">Preview</p>
+                          <MarkdownRenderer content={newQ.text} />
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px] uppercase">Correct Answer</Label>
-                      <Input value={newQ.correctAnswer} onChange={e => setNewQ({...newQ, correctAnswer: e.target.value})} placeholder="e.g. A" />
+                      <Label className="text-[10px] uppercase">Diagram URL / Drive Link (Optional)</Label>
+                      <p className="text-[9px] text-muted-foreground italic mb-1">Note: Ensure Drive links are set to "Anyone with the link can view"</p>
+                      <div className="space-y-2">
+                        <Input 
+                          placeholder="Paste image URL or Google Drive direct link..." 
+                          value={newQ.imageUrl} 
+                          onChange={e => {
+                            let url = e.target.value;
+                            // Helper to convert Drive links to direct links
+                            if (url.includes('drive.google.com')) {
+                              const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                              if (match && match[1]) {
+                                // lh3 is much more reliable for direct embedding than uc?export=view
+                                url = `https://lh3.googleusercontent.com/d/${match[1]}`;
+                              }
+                            }
+                            setNewQ({...newQ, imageUrl: url});
+                          }}
+                          className="text-xs"
+                        />
+                        <Input 
+                          placeholder="Diagram Name/Label (e.g. Figure 1.2)" 
+                          value={newQ.imageLabel} 
+                          onChange={e => setNewQ({...newQ, imageLabel: e.target.value})}
+                          className="text-xs"
+                        />
+                        {newQ.imageUrl && (
+                          <div className="relative w-20 h-20 rounded border border-border overflow-hidden group">
+                            <img src={getDirectImageUrl(newQ.imageUrl)} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <button 
+                              type="button"
+                              onClick={() => setNewQ({...newQ, imageUrl: '', imageLabel: ''})}
+                              className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <XCircle className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
+                    {newQ.type === 'MCQ' ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {newQ.options.map((opt, i) => (
+                          <div key={i} className="space-y-1">
+                            <Input 
+                              placeholder={`Option ${String.fromCharCode(65+i)}`}
+                              value={opt}
+                              onChange={e => {
+                                const next = [...newQ.options];
+                                next[i] = e.target.value;
+                                setNewQ({...newQ, options: next});
+                              }}
+                            />
+                            {opt && (
+                              <div className="p-1.5 border border-border rounded bg-secondary/10 text-[10px]">
+                                <MarkdownRenderer content={opt} />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase">Correct Answer (Value)</Label>
+                        <Input 
+                          value={newQ.correctAnswer} 
+                          onChange={e => setNewQ({...newQ, correctAnswer: e.target.value})} 
+                          placeholder="e.g. 42" 
+                        />
+                      </div>
+                    )}
+
+                    {newQ.type === 'MCQ' && (
+                      <div className="space-y-2">
+                        <Label className="text-[10px] uppercase">Correct Answer</Label>
+                        <Input value={newQ.correctAnswer} onChange={e => setNewQ({...newQ, correctAnswer: e.target.value.toUpperCase()})} placeholder="e.g. A" />
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <Button type="submit" className="flex-1" disabled={loading}>
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingId && editingType === 'question' ? 'Update' : 'Add')}
@@ -1109,11 +1781,38 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                           <div className="space-y-1">
                             <div className="flex gap-2">
                               <Badge variant="secondary" className="text-[8px] uppercase">{q.subject}</Badge>
-                              <Badge variant="outline" className="text-[8px] uppercase">{q.topic}</Badge>
+                              <Badge variant="outline" className="text-[8px] uppercase">{q.type}</Badge>
+                              {q.imageUrl && (
+                                <Badge variant="outline" className="text-[8px] uppercase text-primary border-primary/30">
+                                  {q.imageLabel || 'Has Diagram'}
+                                </Badge>
+                              )}
                             </div>
-                            <p className="text-sm line-clamp-2">{q.text}</p>
+                            <div className="text-sm line-clamp-2">
+                              <MarkdownRenderer content={q.text} />
+                            </div>
+                            {q.type === 'MCQ' && q.options && (
+                              <div className="grid grid-cols-2 gap-2 mt-2">
+                                {q.options.map((opt, idx) => (
+                                  <div key={idx} className="text-[10px] p-1.5 bg-background/50 rounded border border-border/50 flex gap-2 items-center">
+                                    <span className="font-bold text-primary/50">{String.fromCharCode(65 + idx)}:</span>
+                                    <MarkdownRenderer content={opt} />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {q.type === 'Numerical' && (
+                              <div className="mt-2 p-1.5 bg-background/50 rounded border border-border/50 text-[10px]">
+                                <span className="font-bold text-primary/50 uppercase">Numerical Answer:</span> {q.correctAnswer}
+                              </div>
+                            )}
+                            {q.imageUrl && (
+                              <div className="mt-2 rounded border border-border overflow-hidden w-20 h-20">
+                                <img src={getDirectImageUrl(q.imageUrl)} alt={q.imageLabel || "Question Diagram"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              </div>
+                            )}
                           </div>
-                          <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex gap-2">
                             <Button 
                               variant="ghost" 
                               size="icon" 
@@ -1125,8 +1824,8 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <Button 
                               variant="ghost" 
                               size="icon" 
-                              className="text-black hover:bg-black/10"
-                              onClick={() => handleDeleteQuestion(q.id)}
+                              className="text-red-500 hover:bg-red-500/10"
+                              onClick={() => setDeleteConfirm({ id: q.id, type: 'question', title: q.text.substring(0, 30) + '...' })}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -1179,8 +1878,8 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                           <Button 
                             size="sm" 
                             variant="ghost" 
-                            className="flex-1 sm:flex-none text-black hover:bg-black/10"
-                            onClick={() => handleDeleteUser(u.uid)}
+                            className="flex-1 sm:flex-none text-red-500 hover:bg-red-500/10"
+                            onClick={() => setDeleteConfirm({ id: u.uid, type: 'user', title: u.email || u.displayName || 'Anonymous' })}
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -1214,8 +1913,8 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                     <Button 
                       variant="outline" 
                       size="icon" 
-                      className="border-black text-black hover:bg-black/10"
-                      onClick={() => handleDeleteConfig('subscription')}
+                      className="border-red-500 text-red-500 hover:bg-red-500/10"
+                      onClick={() => setDeleteConfirm({ id: 'subscription', type: 'config', title: 'Subscription Price' })}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -1227,6 +1926,251 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
           </TabsContent>
         </Tabs>
       </main>
+
+      {/* Quick Add Question Modal */}
+      <AnimatePresence>
+        {isQuickAddModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-lg bg-background border border-border rounded-2xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-4 border-b border-border flex justify-between items-center bg-secondary/20">
+                <h3 className="text-sm font-black uppercase tracking-widest">Quick Add Question</h3>
+                <Button variant="ghost" size="icon" onClick={() => {
+                  setIsQuickAddModalOpen(false);
+                  setQuickAddSource(null);
+                  resetQuestionForm();
+                }}>
+                  <XCircle className="w-5 h-5" />
+                </Button>
+              </div>
+              <div className="p-6 max-h-[80vh] overflow-y-auto">
+                <form onSubmit={handleAddQuestion} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Subject</Label>
+                      <select 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                        value={newQ.subject}
+                        onChange={e => setNewQ({...newQ, subject: e.target.value as Subject})}
+                      >
+                        <option>Physics</option>
+                        <option>Chemistry</option>
+                        <option>Maths</option>
+                        <option>Biology</option>
+                        <option>Botany</option>
+                        <option>Zoology</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Type</Label>
+                      <select 
+                        className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                        value={newQ.type}
+                        onChange={e => setNewQ({...newQ, type: e.target.value as QuestionType})}
+                      >
+                        <option value="MCQ">MCQ</option>
+                        <option value="Numerical">Numerical</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <Label className="text-[10px] uppercase">Question Text</Label>
+                      <div className="flex gap-2">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="xs" 
+                          className="h-6 text-[8px] uppercase px-2"
+                          onClick={() => setNewQ({...newQ, text: newQ.text + "\n\n| Column I | Column II |\n| :--- | :--- |\n| (A) Item 1 | (P) Item 3 |\n| (B) Item 2 | (Q) Item 4 |\n| (C) Item 3 | (R) Item 5 |\n| (D) Item 4 | (S) Item 6 |\n"})}
+                        >
+                          Match Template
+                        </Button>
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          size="xs" 
+                          className="h-6 text-[8px] uppercase px-2"
+                          onClick={() => setNewQ({...newQ, text: newQ.text + "\n\n* Item 1\n* Item 2\n* Item 3\n"})}
+                        >
+                          List Template
+                        </Button>
+                      </div>
+                    </div>
+                    <textarea 
+                      className="w-full bg-background border border-border rounded-md p-2 text-sm h-24"
+                      value={newQ.text}
+                      onChange={e => setNewQ({...newQ, text: e.target.value})}
+                      placeholder="Enter question text..."
+                    />
+                    {newQ.text && (
+                      <div className="p-2 border border-border rounded bg-secondary/20 text-xs">
+                        <p className="text-[8px] uppercase text-muted-foreground mb-1">Preview</p>
+                        <MarkdownRenderer content={newQ.text} />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase">Diagram URL / Drive Link (Optional)</Label>
+                    <p className="text-[9px] text-muted-foreground italic mb-1">Note: Ensure Drive links are set to "Anyone with the link can view"</p>
+                    <div className="space-y-2">
+                      <Input 
+                        placeholder="Paste image URL or Google Drive direct link..." 
+                        value={newQ.imageUrl} 
+                        onChange={e => {
+                          let url = e.target.value;
+                          if (url.includes('drive.google.com')) {
+                            const match = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+                            if (match && match[1]) {
+                              url = `https://lh3.googleusercontent.com/d/${match[1]}`;
+                            }
+                          }
+                          setNewQ({...newQ, imageUrl: url});
+                        }}
+                        className="text-xs"
+                      />
+                      <Input 
+                        placeholder="Diagram Name/Label (e.g. Figure 1.2)" 
+                        value={newQ.imageLabel} 
+                        onChange={e => setNewQ({...newQ, imageLabel: e.target.value})}
+                        className="text-xs"
+                      />
+                      {newQ.imageUrl && (
+                        <div className="relative w-16 h-16 rounded border border-border overflow-hidden group">
+                          <img src={getDirectImageUrl(newQ.imageUrl)} alt="Preview" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          <button 
+                            type="button"
+                            onClick={() => setNewQ({...newQ, imageUrl: '', imageLabel: ''})}
+                            className="absolute top-0 right-0 bg-red-500 text-white p-0.5 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <XCircle className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {newQ.type === 'MCQ' && (
+                    <div className="space-y-3">
+                      <Label className="text-[10px] uppercase">Options</Label>
+                      {newQ.options.map((opt, idx) => {
+                        const optionLetter = String.fromCharCode(65 + idx);
+                        return (
+                          <div key={idx} className="space-y-1">
+                            <div className="flex gap-2">
+                              <Input 
+                                value={opt} 
+                                onChange={e => {
+                                  const next = [...newQ.options];
+                                  next[idx] = e.target.value;
+                                  setNewQ({...newQ, options: next});
+                                }}
+                                placeholder={`Option ${optionLetter}`}
+                              />
+                              <Button 
+                                type="button"
+                                variant={newQ.correctAnswer === optionLetter ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => setNewQ({...newQ, correctAnswer: optionLetter})}
+                              >
+                                {optionLetter}
+                              </Button>
+                            </div>
+                            {opt && (
+                              <div className="p-1.5 border border-border rounded bg-secondary/10 text-[10px]">
+                                <MarkdownRenderer content={opt} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {newQ.type === 'Numerical' && (
+                    <div className="space-y-2">
+                      <Label className="text-[10px] uppercase">Correct Answer (Value)</Label>
+                      <Input value={newQ.correctAnswer} onChange={e => setNewQ({...newQ, correctAnswer: e.target.value})} placeholder="e.g. 42" />
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-[10px] uppercase">Explanation</Label>
+                    <textarea 
+                      className="w-full bg-background border border-border rounded-md p-2 text-sm h-20"
+                      value={newQ.explanation}
+                      onChange={e => setNewQ({...newQ, explanation: e.target.value})}
+                      placeholder="Explain the answer..."
+                    />
+                    {newQ.explanation && (
+                      <div className="p-2 border border-border rounded bg-secondary/20 text-xs">
+                        <p className="text-[8px] uppercase text-muted-foreground mb-1">Preview</p>
+                        <MarkdownRenderer content={newQ.explanation} />
+                      </div>
+                    )}
+                  </div>
+
+                  <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add Question & Select'}
+                  </Button>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {deleteConfirm && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm bg-background border border-border rounded-2xl shadow-2xl overflow-hidden p-6 space-y-4"
+            >
+              <div className="flex items-center gap-3 text-red-500">
+                <Trash2 className="w-6 h-6" />
+                <h3 className="text-lg font-black uppercase tracking-tighter">Confirm Deletion</h3>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to delete <span className="font-bold text-foreground">"{deleteConfirm.title}"</span>? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <Button 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => setDeleteConfirm(null)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  variant="destructive" 
+                  className="flex-1"
+                  onClick={async () => {
+                    const { id, type } = deleteConfirm;
+                    if (type === 'question') await handleDeleteQuestion(id);
+                    else if (type === 'lecture') await handleDeleteLecture(id);
+                    else if (type === 'quiz') await handleDeleteQuiz(id);
+                    else if (type === 'course') await handleDeleteCourse(id);
+                    else if (type === 'mock-test') await handleDeleteMockTest(id);
+                    else if (type === 'user') await handleDeleteUser(id);
+                    else if (type === 'config') await handleDeleteConfig(id);
+                    setDeleteConfirm(null);
+                  }}
+                >
+                  Delete
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
