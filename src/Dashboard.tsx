@@ -62,7 +62,7 @@ export default function Dashboard({
   currentView: ViewType,
   onViewChange: (view: ViewType) => void
 }) {
-  const { profile, logout, isAdmin } = useAuth();
+  const { profile, logout, isAdmin, isSubAdmin } = useAuth();
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -762,7 +762,7 @@ export default function Dashboard({
           </div>
         </div>
         <div className="flex gap-1 sm:gap-2 flex-shrink-0">
-          {isAdmin && (
+          {(isAdmin || isSubAdmin) && (
             <Button variant="outline" size="icon" onClick={onOpenAdmin} className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl border-primary/20 bg-primary/5 text-primary">
               <Shield className="w-4 h-4" />
             </Button>

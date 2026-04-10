@@ -17,7 +17,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
 
 export default function AdminPanel({ onExit }: { onExit: () => void }) {
-  const { user } = useAuth();
+  const { user, isSubAdmin } = useAuth();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [lectures, setLectures] = useState<Lecture[]>([]);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
@@ -25,7 +25,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const [mockTests, setMockTests] = useState<MockTest[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('resources');
+  const [activeTab, setActiveTab] = useState('lectures');
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
   const [quickAddSource, setQuickAddSource] = useState<'quiz' | 'mock-test' | null>(null);
   const [subPrice, setSubPrice] = useState('999');
@@ -563,6 +563,10 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteQuestion = async (id: string) => {
+    if (isSubAdmin) {
+      toast.error("Sub-admins cannot delete resources");
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'questions', id));
       toast.success("Question deleted");
@@ -573,6 +577,10 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteLecture = async (id: string) => {
+    if (isSubAdmin) {
+      toast.error("Sub-admins cannot delete resources");
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'lectures', id));
       toast.success("Resource deleted");
@@ -633,6 +641,10 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteQuiz = async (id: string) => {
+    if (isSubAdmin) {
+      toast.error("Sub-admins cannot delete resources");
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'quizzes', id));
       toast.success("Quiz deleted");
@@ -643,6 +655,10 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteCourse = async (id: string) => {
+    if (isSubAdmin) {
+      toast.error("Sub-admins cannot delete resources");
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'courses', id));
       toast.success("Course deleted");
@@ -653,6 +669,10 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteMockTest = async (id: string) => {
+    if (isSubAdmin) {
+      toast.error("Sub-admins cannot delete resources");
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'mockTests', id));
       toast.success("Mock test deleted");
@@ -809,6 +829,10 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteUser = async (userId: string) => {
+    if (isSubAdmin) {
+      toast.error("Sub-admins cannot delete users");
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'users', userId));
       toast.success("User deleted successfully");
@@ -819,6 +843,10 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   };
 
   const handleDeleteConfig = async (configId: string) => {
+    if (isSubAdmin) {
+      toast.error("Sub-admins cannot delete configurations");
+      return;
+    }
     try {
       await deleteDoc(doc(db, 'config', configId));
       toast.success("Configuration deleted");
@@ -847,9 +875,9 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
           <div className="grid grid-cols-2 sm:grid-cols-8 gap-2 mb-6">
             <Button 
-              variant={activeTab === 'resources' ? 'default' : 'outline'}
+              variant={activeTab === 'lectures' ? 'default' : 'outline'}
               className="h-16 flex flex-col gap-1 border-primary/20 bg-primary/5 hover:bg-primary/10"
-              onClick={() => setActiveTab('resources')}
+              onClick={() => setActiveTab('lectures')}
             >
               <BookOpen className="w-5 h-5 text-primary" />
               <span className="text-[10px] uppercase font-bold">Video Lectures</span>
@@ -1031,14 +1059,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             >
                               <Edit2 className="w-4 h-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-black hover:bg-black/10"
-                              onClick={() => handleDeleteLecture(l.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-black hover:bg-black/10"
+                                onClick={() => handleDeleteLecture(l.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1416,14 +1446,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             >
                               <Edit2 className="w-4 h-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-red-500 hover:bg-red-500/10"
-                              onClick={() => setDeleteConfirm({ id: q.id, type: 'quiz', title: q.title })}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-red-500 hover:bg-red-500/10"
+                                onClick={() => setDeleteConfirm({ id: q.id, type: 'quiz', title: q.title })}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1529,14 +1561,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             >
                               <Edit2 className="w-4 h-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-red-500 hover:bg-red-500/10"
-                              onClick={() => setDeleteConfirm({ id: c.id, type: 'course', title: c.title })}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-red-500 hover:bg-red-500/10"
+                                onClick={() => setDeleteConfirm({ id: c.id, type: 'course', title: c.title })}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1744,14 +1778,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             >
                               <Edit2 className="w-4 h-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-red-500 hover:bg-red-500/10"
-                              onClick={() => setDeleteConfirm({ id: t.id, type: 'mock-test', title: t.title })}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-red-500 hover:bg-red-500/10"
+                                onClick={() => setDeleteConfirm({ id: t.id, type: 'mock-test', title: t.title })}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2113,14 +2149,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             >
                               <Edit2 className="w-4 h-4" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-red-500 hover:bg-red-500/10"
-                              onClick={() => setDeleteConfirm({ id: q.id, type: 'question', title: q.text.substring(0, 30) + '...' })}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-red-500 hover:bg-red-500/10"
+                                onClick={() => setDeleteConfirm({ id: q.id, type: 'question', title: q.text.substring(0, 30) + '...' })}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -2167,14 +2205,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                           >
                             {u.status === 'blocked' ? 'Unblock' : 'Block'}
                           </Button>
-                          <Button 
-                            size="sm" 
-                            variant="ghost" 
-                            className="flex-1 sm:flex-none text-red-500 hover:bg-red-500/10"
-                            onClick={() => setDeleteConfirm({ id: u.uid, type: 'user', title: u.email || u.displayName || 'Anonymous' })}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {!isSubAdmin && (
+                            <Button 
+                              size="sm" 
+                              variant="ghost" 
+                              className="flex-1 sm:flex-none text-red-500 hover:bg-red-500/10"
+                              onClick={() => setDeleteConfirm({ id: u.uid, type: 'user', title: u.email || u.displayName || 'Anonymous' })}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -2202,14 +2242,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                     <Button onClick={handleUpdatePrice} disabled={priceLoading}>
                       {priceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update'}
                     </Button>
-                    <Button 
-                      variant="outline" 
-                      size="icon" 
-                      className="border-red-500 text-red-500 hover:bg-red-500/10"
-                      onClick={() => setDeleteConfirm({ id: 'subscription', type: 'config', title: 'Subscription Price' })}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    {!isSubAdmin && (
+                      <Button 
+                        variant="outline" 
+                        size="icon" 
+                        className="border-red-500 text-red-500 hover:bg-red-500/10"
+                        onClick={() => setDeleteConfirm({ id: 'subscription', type: 'config', title: 'Subscription Price' })}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
                   <p className="text-[10px] text-muted-foreground uppercase">This price will be shown to users on the checkout page.</p>
                 </div>

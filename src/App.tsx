@@ -21,7 +21,7 @@ import { XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 function AppContent() {
-  const { user, profile, loading, isAdmin, logout } = useAuth();
+  const { user, profile, loading, isAdmin, isSubAdmin, logout } = useAuth();
   const [view, setView] = useState<ViewType | 'player' | 'quiz-player' | 'mock-player' | 'report' | 'checkout'>('dashboard');
   const [selectedLecture, setSelectedLecture] = useState<Lecture | null>(null);
   const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null);
@@ -62,13 +62,13 @@ function AppContent() {
   }
 
   // Subscription Check: If not admin and not active subscription, show checkout
-  const isSubscribed = profile.subscriptionStatus === 'active' || isAdmin;
+  const isSubscribed = profile.subscriptionStatus === 'active' || isAdmin || isSubAdmin;
 
-  if (!isSubscribed && !isAdmin) {
+  if (!isSubscribed && !isAdmin && !isSubAdmin) {
     return <Checkout />;
   }
 
-  if (view === 'admin' && isAdmin) {
+  if (view === 'admin' && (isAdmin || isSubAdmin)) {
     return <AdminPanel onExit={() => setView('dashboard')} />;
   }
 

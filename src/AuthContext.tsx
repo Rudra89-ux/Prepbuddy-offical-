@@ -9,6 +9,7 @@ interface AuthContextType {
   profile: UserProfile | null;
   loading: boolean;
   isAdmin: boolean;
+  isSubAdmin: boolean;
   login: (email?: string, password?: string) => Promise<void>;
   signup: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -22,6 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSubAdmin, setIsSubAdmin] = useState(false);
 
   useEffect(() => {
     let unsubProfile: (() => void) | null = null;
@@ -37,7 +39,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (user) {
         // Check admin status from email first
-        setIsAdmin(user.email === 'rudrapable2010@gmail.com' || user.email === 'leaninkclothing@gmail.com');
+        const adminEmails = ['rudrapable2010@gmail.com', 'leaninkclothing@gmail.com'];
+        const subAdminEmails = ['xajinkya148@gmail.com'];
+        
+        setIsAdmin(adminEmails.includes(user.email || ''));
+        setIsSubAdmin(subAdminEmails.includes(user.email || ''));
         
         const userRef = doc(db, 'users', user.uid);
         unsubProfile = onSnapshot(userRef, (doc) => {
@@ -45,8 +51,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const data = doc.data() as UserProfile;
             
             // Force non-admins to have isSubscribed=false
-            const isUserAdmin = user.email === 'rudrapable2010@gmail.com' || user.email === 'leaninkclothing@gmail.com' || data.role === 'admin';
-            if (!isUserAdmin && data.isSubscribed) {
+            const isUserAdmin = adminEmails.includes(user.email || '') || data.role === 'admin';
+            const isUserSubAdmin = subAdminEmails.includes(user.email || '') || data.role === 'sub-admin';
+            
+            if (!isUserAdmin && !isUserSubAdmin && data.isSubscribed) {
               data.isSubscribed = false;
             }
             
@@ -54,6 +62,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             // Also check role from document
             if (data.role === 'admin') {
               setIsAdmin(true);
+            }
+            if (data.role === 'sub-admin') {
+              setIsSubAdmin(true);
             }
           } else {
             setProfile(null);
@@ -111,7 +122,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const userRef = doc(db, 'users', user.uid);
     
     // Check if user is admin based on email
-    const isUserAdmin = user.email === 'rudrapable2010@gmail.com' || user.email === 'leaninkclothing@gmail.com';
+    const adminEmails = ['rudrapable2010@gmail.com', 'leaninkclothing@gmail.com'];
+    const subAdminEmails = ['xajinkya148@gmail.com'];
+    const isUserAdmin = adminEmails.includes(user.email || '');
+    const isUserSubAdmin = subAdminEmails.includes(user.email || '');
 
     const newProfile: UserProfile = {
       uid: user.uid,
@@ -119,8 +133,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       displayName: user.displayName || 'Student',
       photoURL: user.photoURL || '',
       exam,
-      isSubscribed: isUserAdmin, // Only admins get premium by default now
-      subscriptionStatus: isUserAdmin ? 'active' : 'none',
+      isSubscribed: isUserAdmin || isUserSubAdmin, // Admins and sub-admins get premium
+      subscriptionStatus: (isUserAdmin || isUserSubAdmin) ? 'active' : 'none',
+      role: isUserAdmin ? 'admin' : (isUserSubAdmin ? 'sub-admin' : 'student'),
       createdAt: serverTimestamp(),
       lastActive: serverTimestamp(),
       completedResources: []
@@ -134,7 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin, login, signup, logout, completeOnboarding }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isSubAdmin, login, signup, logout, completeOnboarding }}>
       {children}
     </AuthContext.Provider>
   );
