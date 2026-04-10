@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap, Settings, XCircle, Mic, FileText, Upload, Trophy, ChevronDown } from 'lucide-react';
+import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap, Settings, XCircle, Mic, FileText, Upload, Trophy, ChevronDown, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { Question, Subject, QuestionType, Lecture, Quiz, Course, UserProfile, MockTest, Exam } from './types';
 import { storage, ref, uploadBytes, getDownloadURL } from './lib/firebase';
@@ -32,6 +32,13 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const [priceLoading, setPriceLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string, type: string, title: string } | null>(null);
+  const [qSearch, setQSearch] = useState('');
+  const [qTopicFilter, setQTopicFilter] = useState('');
+  const [isQuickCreateQuizOpen, setIsQuickCreateQuizOpen] = useState(false);
+  const [isQuickCreateMockOpen, setIsQuickCreateMockOpen] = useState(false);
+  const [quickCreateData, setQuickCreateData] = useState({ title: '', subject: 'Physics' as Subject, exam: 'JEE' as Exam });
+  const [quizSearch, setQuizSearch] = useState('');
+  const [mockSearch, setMockSearch] = useState('');
   
   // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -47,7 +54,9 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     options: ['', '', '', ''],
     correctAnswer: '',
     explanation: '',
-    type: 'MCQ' as QuestionType
+    type: 'MCQ' as QuestionType,
+    targetQuizIds: [] as string[],
+    targetMockTestIds: [] as string[]
   });
 
   // New Resource Form
@@ -269,33 +278,138 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
     }
   };
 
+  const handleQuickCreateQuiz = async () => {
+    if (!quickCreateData.title) {
+      toast.error("Please enter a title");
+      return;
+    }
+    setLoading(true);
+    try {
+      const docRef = await addDoc(collection(db, 'quizzes'), {
+        title: quickCreateData.title,
+        subject: quickCreateData.subject,
+        topic: 'General',
+        description: `Quiz for ${quickCreateData.title}`,
+        questions: [],
+        createdAt: serverTimestamp()
+      });
+      toast.success("Quiz created");
+      fetchQuizzes();
+      setNewQ(prev => ({ ...prev, targetQuizIds: [...prev.targetQuizIds, docRef.id] }));
+      setIsQuickCreateQuizOpen(false);
+      setQuickCreateData({ title: '', subject: 'Physics', exam: 'JEE' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'quizzes');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickCreateMock = async () => {
+    if (!quickCreateData.title) {
+      toast.error("Please enter a title");
+      return;
+    }
+    setLoading(true);
+    try {
+      const docRef = await addDoc(collection(db, 'mockTests'), {
+        title: quickCreateData.title,
+        exam: quickCreateData.exam,
+        durationMinutes: 180,
+        description: `Mock test for ${quickCreateData.title}`,
+        questions: [],
+        imageUrl: '',
+        createdAt: serverTimestamp()
+      });
+      toast.success("Mock test created");
+      fetchMockTests();
+      setNewQ(prev => ({ ...prev, targetMockTestIds: [...prev.targetMockTestIds, docRef.id] }));
+      setIsQuickCreateMockOpen(false);
+      setQuickCreateData({ title: '', subject: 'Physics', exam: 'JEE' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'mockTests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAddQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
+      const questionData = {
+        subject: newQ.subject,
+        difficulty: newQ.difficulty,
+        text: newQ.text,
+        imageUrl: newQ.imageUrl,
+        imageLabel: newQ.imageLabel,
+        options: newQ.options,
+        correctAnswer: newQ.correctAnswer,
+        explanation: newQ.explanation,
+        type: newQ.type
+      };
+
+      let qId = editingId;
       if (editingId && editingType === 'question') {
-        await updateDoc(doc(db, 'questions', editingId), newQ);
+        await updateDoc(doc(db, 'questions', editingId), questionData);
         toast.success("Question updated");
       } else {
-        const docRef = await addDoc(collection(db, 'questions'), newQ);
+        const docRef = await addDoc(collection(db, 'questions'), questionData);
+        qId = docRef.id;
         toast.success("Question added");
         
         if (isQuickAddModalOpen && quickAddSource) {
           if (quickAddSource === 'quiz') {
             setNewQuiz(prev => ({
               ...prev,
-              selectedQuestionIds: [...prev.selectedQuestionIds, docRef.id]
+              selectedQuestionIds: [...prev.selectedQuestionIds, qId]
             }));
           } else if (quickAddSource === 'mock-test') {
             setNewMockTest(prev => ({
               ...prev,
-              selectedQuestionIds: [...prev.selectedQuestionIds, docRef.id]
+              selectedQuestionIds: [...prev.selectedQuestionIds, qId]
             }));
           }
           setIsQuickAddModalOpen(false);
           setQuickAddSource(null);
         }
       }
+
+      // Update target quizzes
+      for (const quizId of newQ.targetQuizIds) {
+        const quiz = quizzes.find(qz => qz.id === quizId);
+        if (quiz) {
+          const updatedQuestions = [...quiz.questions];
+          const qIndex = updatedQuestions.findIndex(q => q.id === qId);
+          const fullQuestion = { ...questionData, id: qId } as Question;
+          if (qIndex >= 0) {
+            updatedQuestions[qIndex] = fullQuestion;
+          } else {
+            updatedQuestions.push(fullQuestion);
+          }
+          await updateDoc(doc(db, 'quizzes', quizId), { questions: updatedQuestions });
+        }
+      }
+
+      // Update target mock tests
+      for (const testId of newQ.targetMockTestIds) {
+        const test = mockTests.find(t => t.id === testId);
+        if (test) {
+          const updatedQuestions = [...test.questions];
+          const qIndex = updatedQuestions.findIndex(q => q.id === qId);
+          const fullQuestion = { ...questionData, id: qId } as Question;
+          if (qIndex >= 0) {
+            updatedQuestions[qIndex] = fullQuestion;
+          } else {
+            updatedQuestions.push(fullQuestion);
+          }
+          await updateDoc(doc(db, 'mockTests', testId), { questions: updatedQuestions });
+        }
+      }
+
+      if (newQ.targetQuizIds.length > 0) fetchQuizzes();
+      if (newQ.targetMockTestIds.length > 0) fetchMockTests();
+
       resetQuestionForm();
       fetchQuestions();
     } catch (error) {
@@ -315,7 +429,9 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       options: ['', '', '', ''],
       correctAnswer: '',
       explanation: '',
-      type: 'MCQ'
+      type: 'MCQ',
+      targetQuizIds: [],
+      targetMockTestIds: []
     });
     setEditingId(null);
     setEditingType(null);
@@ -558,8 +674,11 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       options: q.options || ['', '', '', ''],
       correctAnswer: q.correctAnswer,
       explanation: q.explanation,
-      type: q.type
+      type: q.type,
+      targetQuizIds: quizzes.filter(qz => qz.questions.some(qq => qq.id === q.id)).map(qz => qz.id),
+      targetMockTestIds: mockTests.filter(t => t.questions.some(qq => qq.id === q.id)).map(t => t.id)
     });
+    setActiveTab('questions');
   };
 
   const startEditLecture = (l: Lecture) => {
@@ -1224,19 +1343,39 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                           <Plus className="w-3 h-3" /> New Question
                         </Button>
                       </div>
-                      <ScrollArea className="h-48 border border-border rounded-md p-2">
-                        <div className="space-y-2">
-                          {questions.filter(q => q.subject === newQuiz.subject).map(q => (
-                            <div 
-                              key={q.id} 
-                              onClick={() => toggleQuestionSelection(q.id)}
-                              className={`p-2 rounded text-xs cursor-pointer border transition-all ${newQuiz.selectedQuestionIds.includes(q.id) ? 'bg-primary/20 border-primary' : 'bg-secondary/20 border-transparent'}`}
-                            >
-                              <p className="line-clamp-2">{q.text}</p>
-                            </div>
-                          ))}
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <Input 
+                            placeholder="Search questions..." 
+                            value={qSearch} 
+                            onChange={e => setQSearch(e.target.value)}
+                            className="h-8 text-[10px]"
+                          />
+                          <Input 
+                            placeholder="Topic filter..." 
+                            value={qTopicFilter} 
+                            onChange={e => setQTopicFilter(e.target.value)}
+                            className="h-8 text-[10px]"
+                          />
                         </div>
-                      </ScrollArea>
+                        <ScrollArea className="h-48 border border-border rounded-md p-2">
+                          <div className="space-y-2">
+                            {questions
+                              .filter(q => q.subject === newQuiz.subject)
+                              .filter(q => q.text.toLowerCase().includes(qSearch.toLowerCase()))
+                              .filter(q => !qTopicFilter || (q.explanation && q.explanation.toLowerCase().includes(qTopicFilter.toLowerCase())) || (q.text.toLowerCase().includes(qTopicFilter.toLowerCase())))
+                              .map(q => (
+                                <div 
+                                  key={q.id} 
+                                  onClick={() => toggleQuestionSelection(q.id)}
+                                  className={`p-2 rounded text-xs cursor-pointer border transition-all ${newQuiz.selectedQuestionIds.includes(q.id) ? 'bg-primary/20 border-primary' : 'bg-secondary/20 border-transparent'}`}
+                                >
+                                  <p className="line-clamp-2">{q.text}</p>
+                                </div>
+                              ))}
+                          </div>
+                        </ScrollArea>
+                      </div>
                     </div>
                     <div className="flex gap-2">
                       <Button type="submit" className="flex-1" disabled={loading}>
@@ -1516,25 +1655,44 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                         </Button>
                       </div>
                       {showMockQuestions && (
-                        <ScrollArea className="h-60 border border-border rounded-md p-2">
-                          <div className="space-y-2">
-                            {questions.map(q => (
-                              <div 
-                                key={q.id} 
-                                className={`p-2 rounded border cursor-pointer flex justify-between items-center transition-all ${
-                                  newMockTest.selectedQuestionIds.includes(q.id) ? 'bg-primary/10 border-primary' : 'bg-secondary/20 border-border'
-                                }`}
-                                onClick={() => toggleMockQuestionSelection(q.id)}
-                              >
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-bold uppercase text-muted-foreground">{q.subject}</p>
-                                  <p className="text-xs truncate">{q.text}</p>
-                                </div>
-                                {newMockTest.selectedQuestionIds.includes(q.id) && <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />}
-                              </div>
-                            ))}
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <Input 
+                              placeholder="Search questions..." 
+                              value={qSearch} 
+                              onChange={e => setQSearch(e.target.value)}
+                              className="h-8 text-[10px]"
+                            />
+                            <Input 
+                              placeholder="Topic filter..." 
+                              value={qTopicFilter} 
+                              onChange={e => setQTopicFilter(e.target.value)}
+                              className="h-8 text-[10px]"
+                            />
                           </div>
-                        </ScrollArea>
+                          <ScrollArea className="h-60 border border-border rounded-md p-2">
+                            <div className="space-y-2">
+                              {questions
+                                .filter(q => q.text.toLowerCase().includes(qSearch.toLowerCase()))
+                                .filter(q => !qTopicFilter || (q.explanation && q.explanation.toLowerCase().includes(qTopicFilter.toLowerCase())) || (q.text.toLowerCase().includes(qTopicFilter.toLowerCase())))
+                                .map(q => (
+                                  <div 
+                                    key={q.id} 
+                                    className={`p-2 rounded border cursor-pointer flex justify-between items-center transition-all ${
+                                      newMockTest.selectedQuestionIds.includes(q.id) ? 'bg-primary/10 border-primary' : 'bg-secondary/20 border-border'
+                                    }`}
+                                    onClick={() => toggleMockQuestionSelection(q.id)}
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-[10px] font-bold uppercase text-muted-foreground">{q.subject}</p>
+                                      <p className="text-xs truncate">{q.text}</p>
+                                    </div>
+                                    {newMockTest.selectedQuestionIds.includes(q.id) && <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />}
+                                  </div>
+                                ))}
+                            </div>
+                          </ScrollArea>
+                        </div>
                       )}
                     </div>
                     <div className="flex gap-2">
@@ -1757,6 +1915,140 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                         <Input value={newQ.correctAnswer} onChange={e => setNewQ({...newQ, correctAnswer: e.target.value.toUpperCase()})} placeholder="e.g. A" />
                       </div>
                     )}
+
+                    <div className="space-y-4 pt-4 border-t border-border">
+                      <div className="flex items-center gap-2 text-primary">
+                        <List className="w-4 h-4" />
+                        <h3 className="text-[10px] uppercase font-black tracking-widest">Add in List</h3>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <Label className="text-[10px] uppercase text-muted-foreground">Target Quizzes</Label>
+                            <Button 
+                              type="button" 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 text-[8px] uppercase gap-1 text-primary"
+                              onClick={() => {
+                                setQuickCreateData({ ...quickCreateData, subject: newQ.subject });
+                                setIsQuickCreateQuizOpen(true);
+                              }}
+                            >
+                              <Plus className="w-3 h-3" /> New Quiz
+                            </Button>
+                          </div>
+                          <select 
+                            className="w-full bg-background border border-border rounded-md p-1.5 text-[10px] mb-2"
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val && !newQ.targetQuizIds.includes(val)) {
+                                setNewQ({...newQ, targetQuizIds: [...newQ.targetQuizIds, val]});
+                              }
+                            }}
+                            value=""
+                          >
+                            <option value="" disabled>Quick Select Quiz...</option>
+                            {quizzes.filter(qz => qz.subject === newQ.subject).map(qz => (
+                              <option key={qz.id} value={qz.id}>{qz.title}</option>
+                            ))}
+                          </select>
+                          <Input 
+                            placeholder="Search quizzes..." 
+                            value={quizSearch} 
+                            onChange={e => setQuizSearch(e.target.value)}
+                            className="h-7 text-[9px] mb-2"
+                          />
+                          <ScrollArea className="h-32 border border-border rounded-md p-2 bg-secondary/10">
+                            <div className="space-y-1">
+                              {quizzes
+                                .filter(qz => qz.subject === newQ.subject)
+                                .filter(qz => qz.title.toLowerCase().includes(quizSearch.toLowerCase()))
+                                .map(qz => (
+                                <div 
+                                  key={qz.id}
+                                  onClick={() => {
+                                    const next = newQ.targetQuizIds.includes(qz.id)
+                                      ? newQ.targetQuizIds.filter(id => id !== qz.id)
+                                      : [...newQ.targetQuizIds, qz.id];
+                                    setNewQ({...newQ, targetQuizIds: next});
+                                  }}
+                                  className={`p-2 rounded text-[10px] cursor-pointer border transition-all flex items-center justify-between ${newQ.targetQuizIds.includes(qz.id) ? 'bg-primary/20 border-primary' : 'bg-background/50 border-transparent'}`}
+                                >
+                                  <span className="truncate">{qz.title}</span>
+                                  {newQ.targetQuizIds.includes(qz.id) && <CheckCircle2 className="w-3 h-3 text-primary" />}
+                                </div>
+                              ))}
+                              {quizzes.filter(qz => qz.subject === newQ.subject).length === 0 && (
+                                <p className="text-[10px] text-muted-foreground text-center py-4">No {newQ.subject} quizzes found</p>
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex justify-between items-center">
+                            <Label className="text-[10px] uppercase text-muted-foreground">Target Mock Tests</Label>
+                            <Button 
+                              type="button" 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-6 text-[8px] uppercase gap-1 text-primary"
+                              onClick={() => setIsQuickCreateMockOpen(true)}
+                            >
+                              <Plus className="w-3 h-3" /> New Mock
+                            </Button>
+                          </div>
+                          <select 
+                            className="w-full bg-background border border-border rounded-md p-1.5 text-[10px] mb-2"
+                            onChange={e => {
+                              const val = e.target.value;
+                              if (val && !newQ.targetMockTestIds.includes(val)) {
+                                setNewQ({...newQ, targetMockTestIds: [...newQ.targetMockTestIds, val]});
+                              }
+                            }}
+                            value=""
+                          >
+                            <option value="" disabled>Quick Select Mock...</option>
+                            {mockTests.map(t => (
+                              <option key={t.id} value={t.id}>[{t.exam}] {t.title}</option>
+                            ))}
+                          </select>
+                          <Input 
+                            placeholder="Search mock tests..." 
+                            value={mockSearch} 
+                            onChange={e => setMockSearch(e.target.value)}
+                            className="h-7 text-[9px] mb-2"
+                          />
+                          <ScrollArea className="h-32 border border-border rounded-md p-2 bg-secondary/10">
+                            <div className="space-y-1">
+                              {mockTests
+                                .filter(t => t.title.toLowerCase().includes(mockSearch.toLowerCase()))
+                                .map(t => (
+                                <div 
+                                  key={t.id}
+                                  onClick={() => {
+                                    const next = newQ.targetMockTestIds.includes(t.id)
+                                      ? newQ.targetMockTestIds.filter(id => id !== t.id)
+                                      : [...newQ.targetMockTestIds, t.id];
+                                    setNewQ({...newQ, targetMockTestIds: next});
+                                  }}
+                                  className={`p-2 rounded text-[10px] cursor-pointer border transition-all flex items-center justify-between ${newQ.targetMockTestIds.includes(t.id) ? 'bg-primary/20 border-primary' : 'bg-background/50 border-transparent'}`}
+                                >
+                                  <span className="truncate">[{t.exam}] {t.title}</span>
+                                  {newQ.targetMockTestIds.includes(t.id) && <CheckCircle2 className="w-3 h-3 text-primary" />}
+                                </div>
+                              ))}
+                              {mockTests.length === 0 && (
+                                <p className="text-[10px] text-muted-foreground text-center py-4">No mock tests found</p>
+                              )}
+                            </div>
+                          </ScrollArea>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="flex gap-2">
                       <Button type="submit" className="flex-1" disabled={loading}>
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingId && editingType === 'question' ? 'Update' : 'Add')}
@@ -2125,6 +2417,88 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
           </div>
         )}
       </AnimatePresence>
+      <AnimatePresence>
+        {isQuickCreateQuizOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm bg-background border border-border rounded-2xl shadow-2xl p-6 space-y-4"
+            >
+              <h3 className="text-lg font-black uppercase tracking-tighter">Quick Create Quiz</h3>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase">Quiz Title</Label>
+                <Input 
+                  value={quickCreateData.title} 
+                  onChange={e => setQuickCreateData({...quickCreateData, title: e.target.value})} 
+                  placeholder="e.g. Newton's Laws Quiz"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase">Subject</Label>
+                <select 
+                  className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                  value={quickCreateData.subject}
+                  onChange={e => setQuickCreateData({...quickCreateData, subject: e.target.value as Subject})}
+                >
+                  <option>Physics</option>
+                  <option>Chemistry</option>
+                  <option>Maths</option>
+                  <option>Biology</option>
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" className="flex-1" onClick={() => setIsQuickCreateQuizOpen(false)}>Cancel</Button>
+                <Button className="flex-1" onClick={handleQuickCreateQuiz} disabled={loading}>
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isQuickCreateMockOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="w-full max-w-sm bg-background border border-border rounded-2xl shadow-2xl p-6 space-y-4"
+            >
+              <h3 className="text-lg font-black uppercase tracking-tighter">Quick Create Mock Test</h3>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase">Test Title</Label>
+                <Input 
+                  value={quickCreateData.title} 
+                  onChange={e => setQuickCreateData({...quickCreateData, title: e.target.value})} 
+                  placeholder="e.g. JEE Main Full Test 1"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase">Exam</Label>
+                <select 
+                  className="w-full bg-background border border-border rounded-md p-2 text-sm"
+                  value={quickCreateData.exam}
+                  onChange={e => setQuickCreateData({...quickCreateData, exam: e.target.value as Exam})}
+                >
+                  <option value="JEE">JEE</option>
+                  <option value="NEET">NEET</option>
+                </select>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" className="flex-1" onClick={() => setIsQuickCreateMockOpen(false)}>Cancel</Button>
+                <Button className="flex-1" onClick={handleQuickCreateMock} disabled={loading}>
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
+                </Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {deleteConfirm && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
