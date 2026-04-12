@@ -44,6 +44,19 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   // Editing State
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingType, setEditingType] = useState<'question' | 'lecture' | 'quiz' | 'course' | 'mock-test' | 'module' | null>(null);
+  
+  const usedQuestionMap = React.useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    quizzes.forEach(q => q.questions.forEach(question => {
+      if (!map.has(question.id)) map.set(question.id, new Set());
+      map.get(question.id)!.add(q.id);
+    }));
+    mockTests.forEach(t => t.questions.forEach(q => {
+      if (!map.has(q.id)) map.set(q.id, new Set());
+      map.get(q.id)!.add(t.id);
+    }));
+    return map;
+  }, [quizzes, mockTests]);
 
   // New Question Form
   const [newQ, setNewQ] = useState({
@@ -1140,28 +1153,30 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <p className="text-xs text-muted-foreground line-clamp-1">{l.description}</p>
                           </div>
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-primary"
-                              onClick={() => {
-                                setEditingId(l.id);
-                                setEditingType('lecture');
-                                setNewL({
-                                  title: l.title,
-                                  description: l.description,
-                                  subject: l.subject,
-                                  topic: l.topic,
-                                  videoUrl: l.videoUrl || '',
-                                  audioUrl: l.audioUrl || '',
-                                  pdfUrl: l.pdfUrl || '',
-                                  type: l.type || 'video'
-                                });
-                                setActiveTab('lectures');
-                              }}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-muted-foreground hover:text-primary"
+                                onClick={() => {
+                                  setEditingId(l.id);
+                                  setEditingType('lecture');
+                                  setNewL({
+                                    title: l.title,
+                                    description: l.description,
+                                    subject: l.subject,
+                                    topic: l.topic,
+                                    videoUrl: l.videoUrl || '',
+                                    audioUrl: l.audioUrl || '',
+                                    pdfUrl: l.pdfUrl || '',
+                                    type: l.type || 'video'
+                                  });
+                                  setActiveTab('lectures');
+                                }}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
                             {!isSubAdmin && (
                               <Button 
                                 variant="ghost" 
@@ -1255,36 +1270,40 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <p className="text-xs text-muted-foreground line-clamp-1">{l.description}</p>
                           </div>
                           <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-primary"
-                              onClick={() => {
-                                setEditingId(l.id);
-                                setEditingType('lecture');
-                                setNewL({
-                                  title: l.title,
-                                  description: l.description,
-                                  subject: l.subject,
-                                  topic: l.topic,
-                                  videoUrl: l.videoUrl || '',
-                                  audioUrl: l.audioUrl || '',
-                                  pdfUrl: l.pdfUrl || '',
-                                  type: l.type
-                                });
-                                setActiveTab('discussions');
-                              }}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-black hover:bg-black/10"
-                              onClick={() => handleDeleteLecture(l.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-muted-foreground hover:text-primary"
+                                onClick={() => {
+                                  setEditingId(l.id);
+                                  setEditingType('lecture');
+                                  setNewL({
+                                    title: l.title,
+                                    description: l.description,
+                                    subject: l.subject,
+                                    topic: l.topic,
+                                    videoUrl: l.videoUrl || '',
+                                    audioUrl: l.audioUrl || '',
+                                    pdfUrl: l.pdfUrl || '',
+                                    type: l.type
+                                  });
+                                  setActiveTab('discussions');
+                                }}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-black hover:bg-black/10"
+                                onClick={() => handleDeleteLecture(l.id)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1391,36 +1410,40 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <p className="text-xs text-muted-foreground line-clamp-1">{l.description}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-primary"
-                              onClick={() => {
-                                setEditingId(l.id);
-                                setEditingType('lecture');
-                                setNewL({
-                                  title: l.title,
-                                  description: l.description,
-                                  subject: l.subject,
-                                  topic: l.topic,
-                                  videoUrl: l.videoUrl || '',
-                                  audioUrl: l.audioUrl || '',
-                                  pdfUrl: l.pdfUrl || '',
-                                  type: l.type
-                                });
-                                setActiveTab('notes');
-                              }}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-red-500 hover:bg-red-500/10"
-                              onClick={() => setDeleteConfirm({ id: l.id, type: 'lecture', title: l.title })}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-muted-foreground hover:text-primary"
+                                onClick={() => {
+                                  setEditingId(l.id);
+                                  setEditingType('lecture');
+                                  setNewL({
+                                    title: l.title,
+                                    description: l.description,
+                                    subject: l.subject,
+                                    topic: l.topic,
+                                    videoUrl: l.videoUrl || '',
+                                    audioUrl: l.audioUrl || '',
+                                    pdfUrl: l.pdfUrl || '',
+                                    type: l.type
+                                  });
+                                  setActiveTab('notes');
+                                }}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-red-500 hover:bg-red-500/10"
+                                onClick={() => setDeleteConfirm({ id: l.id, type: 'lecture', title: l.title })}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1495,6 +1518,12 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                           <div className="space-y-2">
                             {questions
                               .filter(q => q.subject === newQuiz.subject)
+                              .filter(q => {
+                                const usage = usedQuestionMap.get(q.id);
+                                if (!usage) return true;
+                                if (usage.has(editingId || '')) return true;
+                                return false;
+                              })
                               .filter(q => q.text.toLowerCase().includes(qSearch.toLowerCase()))
                               .filter(q => !qTopicFilter || (q.explanation && q.explanation.toLowerCase().includes(qTopicFilter.toLowerCase())) || (q.text.toLowerCase().includes(qTopicFilter.toLowerCase())))
                               .map(q => (
@@ -1541,14 +1570,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <p className="text-xs text-muted-foreground line-clamp-1">{q.description}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-primary"
-                              onClick={() => startEditQuiz(q)}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-muted-foreground hover:text-primary"
+                                onClick={() => startEditQuiz(q)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
                             {!isSubAdmin && (
                               <Button 
                                 variant="ghost" 
@@ -1656,14 +1687,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <p className="text-sm font-bold">{c.title}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-primary"
-                              onClick={() => startEditCourse(c)}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-muted-foreground hover:text-primary"
+                                onClick={() => startEditCourse(c)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
                             {!isSubAdmin && (
                               <Button 
                                 variant="ghost" 
@@ -1803,14 +1836,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             <p className="text-xs text-muted-foreground line-clamp-1">{m.description}</p>
                           </div>
                           <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-primary"
-                              onClick={() => startEditModule(m)}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-muted-foreground hover:text-primary"
+                                onClick={() => startEditModule(m)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
                             {!isSubAdmin && (
                               <Button 
                                 variant="ghost" 
@@ -1956,6 +1991,12 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                           <ScrollArea className="h-60 border border-border rounded-md p-2">
                             <div className="space-y-2">
                               {questions
+                                .filter(q => {
+                                  const usage = usedQuestionMap.get(q.id);
+                                  if (!usage) return true;
+                                  if (usage.has(editingId || '')) return true;
+                                  return false;
+                                })
                                 .filter(q => q.text.toLowerCase().includes(qSearch.toLowerCase()))
                                 .filter(q => !qTopicFilter || (q.explanation && q.explanation.toLowerCase().includes(qTopicFilter.toLowerCase())) || (q.text.toLowerCase().includes(qTopicFilter.toLowerCase())))
                                 .map(q => (
@@ -2019,14 +2060,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-primary"
-                              onClick={() => startEditMockTest(t)}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-muted-foreground hover:text-primary"
+                                onClick={() => startEditMockTest(t)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
                             {!isSubAdmin && (
                               <Button 
                                 variant="ghost" 
@@ -2390,14 +2433,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                             )}
                           </div>
                           <div className="flex gap-2">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="text-muted-foreground hover:text-primary"
-                              onClick={() => startEditQuestion(q)}
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
+                            {!isSubAdmin && (
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                className="text-muted-foreground hover:text-primary"
+                                onClick={() => startEditQuestion(q)}
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </Button>
+                            )}
                             {!isSubAdmin && (
                               <Button 
                                 variant="ghost" 
@@ -2437,23 +2482,25 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                           <p className="text-xs text-muted-foreground">{u.email}</p>
                         </div>
                         <div className="flex gap-2 w-full sm:w-auto">
-                          {u.subscriptionStatus === 'pending' && (
+                          {u.subscriptionStatus === 'pending' && !isSubAdmin && (
                             <>
                               <Button size="sm" className="flex-1 sm:flex-none text-[10px] uppercase font-bold" onClick={() => handleApproveSubscription(u.uid)}>Approve</Button>
                               <Button size="sm" variant="destructive" className="flex-1 sm:flex-none text-[10px] uppercase font-bold" onClick={() => handleRejectSubscription(u.uid)}>Reject</Button>
                             </>
                           )}
-                          {u.subscriptionStatus === 'active' && (
+                          {u.subscriptionStatus === 'active' && !isSubAdmin && (
                             <Button size="sm" variant="outline" className="flex-1 sm:flex-none text-[10px] uppercase font-bold" onClick={() => handleRejectSubscription(u.uid)}>Revoke</Button>
                           )}
-                          <Button 
-                            size="sm" 
-                            variant={u.status === 'blocked' ? 'default' : 'outline'} 
-                            className={`flex-1 sm:flex-none text-[10px] uppercase font-bold ${u.status === 'blocked' ? 'bg-red-600 hover:bg-red-700' : 'border-red-500 text-red-500 hover:bg-red-50'}`}
-                            onClick={() => handleToggleBlock(u.uid, u.status)}
-                          >
-                            {u.status === 'blocked' ? 'Unblock' : 'Block'}
-                          </Button>
+                          {!isSubAdmin && (
+                            <Button 
+                              size="sm" 
+                              variant={u.status === 'blocked' ? 'default' : 'outline'} 
+                              className={`flex-1 sm:flex-none text-[10px] uppercase font-bold ${u.status === 'blocked' ? 'bg-red-600 hover:bg-red-700' : 'border-red-500 text-red-500 hover:bg-red-50'}`}
+                              onClick={() => handleToggleBlock(u.uid, u.status)}
+                            >
+                              {u.status === 'blocked' ? 'Unblock' : 'Block'}
+                            </Button>
+                          )}
                           {!isSubAdmin && (
                             <Button 
                               size="sm" 
@@ -2488,7 +2535,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                       placeholder="e.g. 999"
                       className="text-lg font-bold"
                     />
-                    <Button onClick={handleUpdatePrice} disabled={priceLoading}>
+                    <Button onClick={handleUpdatePrice} disabled={priceLoading || isSubAdmin}>
                       {priceLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Update'}
                     </Button>
                     {!isSubAdmin && (

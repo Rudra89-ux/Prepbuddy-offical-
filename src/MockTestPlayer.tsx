@@ -30,6 +30,7 @@ export default function MockTestPlayer({ test, onBack }: { test: MockTest, onBac
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [timeLeft, setTimeLeft] = useState(test.durationMinutes * 60);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [showReview, setShowReview] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [attempt, setAttempt] = useState<MockTestAttempt | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -134,52 +135,110 @@ export default function MockTestPlayer({ test, onBack }: { test: MockTest, onBac
 
   if (isSubmitted && attempt) {
     return (
-      <div className="min-h-screen bg-background p-6 flex flex-col items-center justify-center space-y-8">
-        <motion.div 
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="w-full max-w-md text-center space-y-6"
-        >
-          <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
-            <Trophy className="w-10 h-10 text-primary" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-3xl font-black uppercase tracking-tighter">Test Completed!</h1>
-            <p className="text-muted-foreground uppercase text-[10px] tracking-widest font-bold">Results for {test.title}</p>
-          </div>
+      <div className="min-h-screen bg-background p-6 flex flex-col items-center justify-center space-y-8 overflow-y-auto py-12">
+        {!showReview ? (
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-md text-center space-y-6"
+          >
+            <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+              <Trophy className="w-10 h-10 text-primary" />
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-3xl font-black uppercase tracking-tighter">Test Completed!</h1>
+              <p className="text-muted-foreground uppercase text-[10px] tracking-widest font-bold">Results for {test.title}</p>
+            </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Card className="premium-card bg-primary/5 border-primary/20">
-              <CardContent className="p-4 text-center">
-                <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Total Score</p>
-                <p className="text-3xl font-black text-primary">
-                  {attempt.score}
-                  <span className="text-sm text-muted-foreground ml-1">/ {test.exam === 'JEE' ? '300' : '720'}</span>
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="premium-card">
-              <CardContent className="p-4 text-center">
-                <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Time Taken</p>
-                <p className="text-3xl font-black">{formatTime(attempt.timeTakenSeconds)}</p>
-              </CardContent>
-            </Card>
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Card className="premium-card bg-primary/5 border-primary/20">
+                <CardContent className="p-4 text-center">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Total Score</p>
+                  <p className="text-3xl font-black text-primary">
+                    {attempt.score}
+                    <span className="text-sm text-muted-foreground ml-1">/ {test.exam === 'JEE' ? '300' : '720'}</span>
+                  </p>
+                </CardContent>
+              </Card>
+              <Card className="premium-card">
+                <CardContent className="p-4 text-center">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Time Taken</p>
+                  <p className="text-3xl font-black">{formatTime(attempt.timeTakenSeconds)}</p>
+                </CardContent>
+              </Card>
+            </div>
 
-          <div className="space-y-3">
-            <h3 className="text-[10px] uppercase font-black tracking-widest text-left ml-1">Subject Breakdown</h3>
-            {Object.entries(attempt.subjectScores).map(([subject, score]) => (
-              <div key={subject} className="flex justify-between items-center p-3 bg-secondary/30 rounded-xl border border-border">
-                <span className="text-xs font-bold uppercase">{subject}</span>
-                <span className="text-sm font-black">{score}</span>
-              </div>
-            ))}
-          </div>
+            <div className="space-y-3">
+              <h3 className="text-[10px] uppercase font-black tracking-widest text-left ml-1">Subject Breakdown</h3>
+              {Object.entries(attempt.subjectScores).map(([subject, score]) => (
+                <div key={subject} className="flex justify-between items-center p-3 bg-secondary/30 rounded-xl border border-border">
+                  <span className="text-xs font-bold uppercase">{subject}</span>
+                  <span className="text-sm font-black">{score}</span>
+                </div>
+              ))}
+            </div>
 
-          <Button onClick={onBack} className="w-full h-12 rounded-2xl font-bold uppercase tracking-widest">
-            Back to Dashboard
-          </Button>
-        </motion.div>
+            <div className="flex flex-col gap-3">
+              <Button onClick={() => setShowReview(true)} variant="outline" className="w-full h-12 rounded-2xl font-bold uppercase tracking-widest">
+                Review Mistakes
+              </Button>
+              <Button onClick={onBack} className="w-full h-12 rounded-2xl font-bold uppercase tracking-widest">
+                Back to Dashboard
+              </Button>
+            </div>
+          </motion.div>
+        ) : (
+          <div className="w-full max-w-3xl space-y-8">
+            <div className="flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-md py-4 z-10 border-b border-border mb-6">
+              <h2 className="text-xl font-black uppercase tracking-tighter">Review Test Mistakes</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowReview(false)} className="uppercase font-bold text-[10px]">Back to Result</Button>
+            </div>
+            
+            <div className="space-y-8">
+              {test.questions.map((q, idx) => {
+                const userAnswer = answers[q.id];
+                const isCorrect = userAnswer?.trim().toUpperCase() === q.correctAnswer?.trim().toUpperCase();
+                const isNotAnswered = !userAnswer;
+                
+                return (
+                  <div key={idx} className={`p-6 rounded-3xl border ${isCorrect ? 'border-green-500/20 bg-green-500/5' : isNotAnswered ? 'border-border bg-secondary/5' : 'border-red-500/20 bg-red-500/5'} space-y-4`}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-2">
+                        <Badge variant="outline" className="uppercase text-[8px]">{q.subject}</Badge>
+                        <Badge variant={isCorrect ? "default" : isNotAnswered ? "secondary" : "destructive"} className="uppercase text-[8px]">
+                          Question {idx + 1} - {isCorrect ? 'Correct' : isNotAnswered ? 'Not Answered' : 'Incorrect'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div className="text-sm font-bold">
+                      <MarkdownRenderer content={q.text} />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className={`p-3 rounded-xl border text-xs ${isCorrect ? 'border-green-500/50 bg-green-500/10' : isNotAnswered ? 'border-border bg-secondary/10' : 'border-red-500/50 bg-red-500/10'}`}>
+                        <span className="font-black uppercase text-[8px] block mb-1">Your Answer:</span>
+                        {userAnswer || 'Not Answered'}
+                      </div>
+                      <div className="p-3 rounded-xl border border-green-500/50 bg-green-500/10 text-xs">
+                        <span className="font-black uppercase text-[8px] block mb-1">Correct Answer:</span>
+                        {q.correctAnswer}
+                      </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2">
+                      <p className="text-[8px] font-black uppercase text-blue-500 tracking-widest">Explanation</p>
+                      <div className="text-[10px] text-foreground/80 leading-relaxed">
+                        <MarkdownRenderer content={q.explanation} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <Button onClick={onBack} className="w-full h-12 rounded-2xl font-bold uppercase mt-8">
+              Back to Dashboard
+            </Button>
+          </div>
+        )}
       </div>
     );
   }

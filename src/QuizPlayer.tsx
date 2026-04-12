@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, CheckCircle2, XCircle, ChevronRight, Trophy, Loader2 } from 'lucide-react';
 import { Quiz, QuizAttempt } from './types';
 import { useAuth } from './AuthContext';
@@ -19,6 +20,8 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [score, setScore] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
+  const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
+  const [showReview, setShowReview] = useState(false);
   const [saving, setSaving] = useState(false);
   const [submittingAttempt, setSubmittingAttempt] = useState(false);
 
@@ -49,6 +52,7 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
   const handleSubmit = () => {
     if (!selectedOption) return;
     setIsSubmitted(true);
+    setUserAnswers(prev => ({ ...prev, [currentQuestionIndex]: selectedOption }));
     if (selectedOption?.trim().toUpperCase() === currentQuestion.correctAnswer?.trim().toUpperCase()) {
       setScore(prev => prev + 1);
     }
@@ -101,24 +105,86 @@ export default function QuizPlayer({ quiz, onBack }: { quiz: Quiz, onBack: () =>
   if (isFinished) {
     const finalScore = score;
     return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center space-y-6">
-        <motion.div 
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className="p-6 bg-primary/10 rounded-full"
-        >
-          <Trophy className="w-20 h-20 text-primary" />
-        </motion.div>
-        <div className="space-y-2">
-          <h2 className="text-3xl font-black tracking-tighter uppercase">Quiz Completed!</h2>
-          <p className="text-muted-foreground uppercase tracking-widest text-xs">Great job on finishing {quiz.title}</p>
-        </div>
-        <div className="text-6xl font-black text-primary">
-          {finalScore} / {shuffledQuestions.length}
-        </div>
-        <Button onClick={onBack} className="w-full max-w-xs h-12 rounded-xl font-bold uppercase">
-          Back to Quizzes
-        </Button>
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 space-y-6 overflow-y-auto py-12">
+        {!showReview ? (
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-md text-center space-y-6"
+          >
+            <motion.div 
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="p-6 bg-primary/10 rounded-full w-fit mx-auto"
+            >
+              <Trophy className="w-20 h-20 text-primary" />
+            </motion.div>
+            <div className="space-y-2">
+              <h2 className="text-3xl font-black tracking-tighter uppercase">Quiz Completed!</h2>
+              <p className="text-muted-foreground uppercase tracking-widest text-xs">Great job on finishing {quiz.title}</p>
+            </div>
+            <div className="text-6xl font-black text-primary">
+              {finalScore} / {shuffledQuestions.length}
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button onClick={() => setShowReview(true)} variant="outline" className="w-full h-12 rounded-xl font-bold uppercase">
+                Review Mistakes
+              </Button>
+              <Button onClick={onBack} className="w-full h-12 rounded-xl font-bold uppercase">
+                Back to Quizzes
+              </Button>
+            </div>
+          </motion.div>
+        ) : (
+          <div className="w-full max-w-2xl space-y-8">
+            <div className="flex items-center justify-between sticky top-0 bg-background/80 backdrop-blur-md py-4 z-10 border-b border-border mb-6">
+              <h2 className="text-xl font-black uppercase tracking-tighter">Review Mistakes</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowReview(false)} className="uppercase font-bold text-[10px]">Back to Result</Button>
+            </div>
+            
+            <div className="space-y-8">
+              {shuffledQuestions.map((q, idx) => {
+                const userAnswer = userAnswers[idx];
+                const isCorrect = userAnswer?.trim().toUpperCase() === q.correctAnswer?.trim().toUpperCase();
+                
+                return (
+                  <div key={idx} className={`p-6 rounded-3xl border ${isCorrect ? 'border-green-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5'} space-y-4`}>
+                    <div className="flex items-center justify-between">
+                      <Badge variant={isCorrect ? "default" : "destructive"} className="uppercase text-[8px]">
+                        Question {idx + 1} - {isCorrect ? 'Correct' : 'Incorrect'}
+                      </Badge>
+                    </div>
+                    <div className="text-sm font-bold">
+                      <MarkdownRenderer content={q.text} />
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className={`p-3 rounded-xl border text-xs ${isCorrect ? 'border-green-500/50 bg-green-500/10' : 'border-red-500/50 bg-red-500/10'}`}>
+                        <span className="font-black uppercase text-[8px] block mb-1">Your Answer:</span>
+                        {userAnswer || 'Not Answered'}
+                      </div>
+                      {!isCorrect && (
+                        <div className="p-3 rounded-xl border border-green-500/50 bg-green-500/10 text-xs">
+                          <span className="font-black uppercase text-[8px] block mb-1">Correct Answer:</span>
+                          {q.correctAnswer}
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2">
+                      <p className="text-[8px] font-black uppercase text-blue-500 tracking-widest">Explanation</p>
+                      <div className="text-[10px] text-foreground/80 leading-relaxed">
+                        <MarkdownRenderer content={q.explanation} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            
+            <Button onClick={onBack} className="w-full h-12 rounded-xl font-bold uppercase mt-8">
+              Back to Quizzes
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
