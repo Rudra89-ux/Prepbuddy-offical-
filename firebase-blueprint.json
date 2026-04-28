@@ -129,6 +129,56 @@
         "completedAt": { "type": "string", "format": "date-time" },
         "timeTakenSeconds": { "type": "number" }
       }
+    },
+    "StudyGroup": {
+      "title": "StudyGroup",
+      "description": "A small group of students for collaborative study",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "memberIds": { "type": "array", "items": { "type": "string" } },
+        "maxMembers": { "type": "number" },
+        "isPrivate": { "type": "boolean" },
+        "inviteCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastActive": { "type": "string", "format": "date-time" },
+        "exam": { "type": "string", "enum": ["JEE", "NEET"] }
+      },
+      "required": ["id", "name", "creatorId", "memberIds", "maxMembers", "isPrivate", "exam"]
+    },
+    "GroupMessage": {
+      "title": "GroupMessage",
+      "description": "A message sent within a study group",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "groupId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["text", "doubt", "system"] },
+        "resolved": { "type": "boolean" }
+      },
+      "required": ["id", "groupId", "senderId", "text", "createdAt", "type"]
+    },
+    "GroupNote": {
+      "title": "GroupNote",
+      "description": "A note shared within a study group",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "groupId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "groupId", "title", "content", "authorId", "createdAt"]
     }
   },
   "firestore": {
@@ -167,6 +217,18 @@
     "/mockTestAttempts/{attemptId}": {
       "schema": "MockTestAttempt",
       "description": "User mock test attempts"
+    },
+    "/studyGroups/{groupId}": {
+      "schema": "StudyGroup",
+      "description": "Study groups"
+    },
+    "/studyGroups/{groupId}/messages/{messageId}": {
+      "schema": "GroupMessage",
+      "description": "Messages within a study group"
+    },
+    "/studyGroups/{groupId}/notes/{noteId}": {
+      "schema": "GroupNote",
+      "description": "Notes shared within a study group"
     }
   }
 }

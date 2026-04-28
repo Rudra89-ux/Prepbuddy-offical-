@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lecture, Quiz, Course, QuizAttempt, MockTest, Module } from './types';
+import { Lecture, Quiz, Course, QuizAttempt, MockTest, Module, StudyGroup } from './types';
 import { 
   BookOpen, 
   Brain, 
@@ -20,6 +20,7 @@ import {
   Settings,
   LogOut,
   Sparkles,
+  Users,
   Play,
   Search,
   LayoutGrid,
@@ -46,7 +47,11 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
-export type ViewType = 'dashboard' | 'resources' | 'quizzes' | 'courses' | 'modules' | 'mock-tests' | 'history' | 'settings' | 'admin';
+import { StudyGroupView } from './components/StudyGroupView';
+import StudyGroups from './components/StudyGroups';
+import AICenter from './components/AICenter';
+
+export type ViewType = 'dashboard' | 'resources' | 'quizzes' | 'courses' | 'modules' | 'mock-tests' | 'history' | 'settings' | 'admin' | 'groups' | 'ai-lab';
 
 export default function Dashboard({ 
   onOpenAdmin, 
@@ -72,6 +77,7 @@ export default function Dashboard({
   const [modules, setModules] = useState<Module[]>([]);
   const [mockTests, setMockTests] = useState<MockTest[]>([]);
   const [quizAttempts, setQuizAttempts] = useState<QuizAttempt[]>([]);
+  const [groups, setGroups] = useState<StudyGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -135,6 +141,13 @@ export default function Dashboard({
       handleFirestoreError(error, OperationType.LIST, 'mockTests');
     });
 
+    const qSG = query(collection(db, 'studyGroups'), where('memberIds', 'array-contains', profile.uid));
+    const unsubSG = onSnapshot(qSG, (snapshot) => {
+      setGroups(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StudyGroup)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'studyGroups');
+    });
+
     return () => {
       unsubL();
       unsubQ();
@@ -142,6 +155,7 @@ export default function Dashboard({
       unsubM();
       unsubQA();
       unsubMT();
+      unsubSG();
     };
   }, [profile.uid]);
 
@@ -594,6 +608,12 @@ export default function Dashboard({
           </section>
         );
 
+      case 'groups':
+        return <StudyGroups />;
+
+      case 'ai-lab':
+        return <AICenter />;
+
       case 'history':
         return (
           <section className="space-y-8">
@@ -748,18 +768,30 @@ export default function Dashboard({
             </div>
 
             {/* Quick Stats */}
-            <section className="grid grid-cols-2 gap-4">
+            <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard 
                 icon={<BookOpen className="w-4 h-4 text-primary" />} 
                 label="Resources" 
                 value={profile.completedResources?.length || 0} 
+                onClick={() => onViewChange('resources')}
+              />
+              <StatCard 
+                icon={<Brain className="w-4 h-4 text-blue-500" />} 
+                label="Quizzes" 
+                value={quizAttempts.length} 
                 onClick={() => onViewChange('history')}
               />
               <StatCard 
-                icon={<Trophy className="w-4 h-4 text-blue-500" />} 
-                label="Quiz Attempts" 
-                value={quizAttempts.length} 
-                onClick={() => onViewChange('history')}
+                icon={<Users className="w-4 h-4 text-green-500" />} 
+                label="Study Groups" 
+                value={groups.length} 
+                onClick={() => onViewChange('groups')}
+              />
+              <StatCard 
+                icon={<Sparkles className="w-4 h-4 text-indigo-500" />} 
+                label="AI Lab" 
+                value="New" 
+                onClick={() => onViewChange('ai-lab')}
               />
             </section>
 
@@ -869,8 +901,8 @@ export default function Dashboard({
       </main>
 
       {/* Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 p-2 sm:p-4 bg-background/80 backdrop-blur-xl border-t border-border z-50">
-        <div className="max-w-md mx-auto flex justify-around items-center">
+      <nav className="fixed bottom-0 left-0 right-0 p-2 sm:p-4 bg-background/80 backdrop-blur-xl border-t border-border z-50 overflow-x-auto no-scrollbar">
+        <div className="max-w-2xl mx-auto flex justify-between items-center gap-6 px-4">
           <NavIcon 
             icon={<LayoutGrid className="w-4 h-4 sm:w-5 sm:h-5" />} 
             label="Home" 
@@ -879,15 +911,9 @@ export default function Dashboard({
           />
           <NavIcon 
             icon={<BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />} 
-            label="Resources" 
+            label="Learn" 
             active={currentView === 'resources'} 
             onClick={() => onViewChange('resources')}
-          />
-          <NavIcon 
-            icon={<List className="w-4 h-4 sm:w-5 sm:h-5" />} 
-            label="Modules" 
-            active={currentView === 'modules'} 
-            onClick={() => onViewChange('modules')}
           />
           <NavIcon 
             icon={<Brain className="w-4 h-4 sm:w-5 sm:h-5" />} 
@@ -896,20 +922,26 @@ export default function Dashboard({
             onClick={() => onViewChange('quizzes')}
           />
           <NavIcon 
+            icon={<Users className="w-4 h-4 sm:w-5 sm:h-5" />} 
+            label="Groups" 
+            active={currentView === 'groups'} 
+            onClick={() => onViewChange('groups')}
+          />
+          <NavIcon 
+            icon={<Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-500" />} 
+            label="AI Hub" 
+            active={currentView === 'ai-lab'} 
+            onClick={() => onViewChange('ai-lab')}
+          />
+          <NavIcon 
             icon={<Trophy className="w-4 h-4 sm:w-5 sm:h-5" />} 
             label="Mocks" 
             active={currentView === 'mock-tests'} 
             onClick={() => onViewChange('mock-tests')}
           />
           <NavIcon 
-            icon={<History className="w-4 h-4 sm:w-5 sm:h-5" />} 
-            label="History" 
-            active={currentView === 'history'} 
-            onClick={() => onViewChange('history')}
-          />
-          <NavIcon 
             icon={<Settings className="w-4 h-4 sm:w-5 sm:h-5" />} 
-            label="Settings" 
+            label="Profile" 
             active={currentView === 'settings'} 
             onClick={() => onViewChange('settings')}
           />

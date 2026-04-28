@@ -118,3 +118,38 @@ export interface MockTestAttempt {
   completedAt: any;
   timeTakenSeconds: number;
 }
+
+export interface StudyGroup {
+  id: string;
+  name: string;
+  description: string;
+  creatorId: string;
+  memberIds: string[];
+  maxMembers: number; // 5-10
+  isPrivate: boolean;
+  inviteCode?: string;
+  createdAt: any;
+  lastActive: any;
+  exam: Exam;
+}
+
+export interface GroupMessage {
+  id: string;
+  groupId: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  createdAt: any;
+  type: 'text' | 'doubt' | 'system';
+  resolved?: boolean; // for doubts
+}
+
+export interface GroupNote {
+  id: string;
+  groupId: string;
+  title: string;
+  content: string; // Markdown
+  authorId: string;
+  authorName: string;
+  createdAt: any;
+}
