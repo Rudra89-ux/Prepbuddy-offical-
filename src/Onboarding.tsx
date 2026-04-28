@@ -84,8 +84,8 @@ export default function Onboarding() {
                     <Brain className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <p className="font-semibold">AI Study Mentor</p>
-                    <p className="text-sm text-muted-foreground">Personalized guidance for your success.</p>
+                    <p className="font-semibold">Smart Tracking</p>
+                    <p className="text-sm text-muted-foreground">Monitor your scores and study trends in real-time.</p>
                   </div>
                 </div>
                 <Button className="w-full mt-6 group h-12 rounded-xl font-bold" onClick={handleFinish}>

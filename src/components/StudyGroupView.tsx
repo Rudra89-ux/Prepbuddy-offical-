@@ -9,7 +9,6 @@ import {
   MessageSquare, 
   BookOpen, 
   Trophy, 
-  Sparkles, 
   Send, 
   ArrowLeft, 
   CheckCircle2, 
@@ -38,8 +37,6 @@ export function StudyGroupView({ group, onBack }: { group: StudyGroup, onBack: (
   const [leaderboard, setLeaderboard] = useState<{name: string, score: number}[]>([]);
   const [inputText, setInputText] = useState('');
   const [isDoubt, setIsDoubt] = useState(false);
-  const [aiInsight, setAiInsight] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('chat');
   
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -89,22 +86,6 @@ export function StudyGroupView({ group, onBack }: { group: StudyGroup, onBack: (
     }
   };
 
-  const getAIInsights = async () => {
-    if (messages.length < 5) {
-      toast.info("Need more messages for AI analysis");
-      return;
-    }
-    setAiLoading(true);
-    try {
-      const insight = await AIService.getGroupInsights(messages.slice(-20).map(m => `${m.senderName}: ${m.text}`), group.exam);
-      setAiInsight(insight || "Optimization in progress...");
-    } catch (error) {
-      toast.error("AI analysis failed");
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [newNote, setNewNote] = useState({ title: '', content: '' });
 
@@ -137,10 +118,6 @@ export function StudyGroupView({ group, onBack }: { group: StudyGroup, onBack: (
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={getAIInsights} disabled={aiLoading} className="rounded-xl border-indigo-500/20 text-indigo-500 hover:bg-indigo-500/10 h-10">
-            {aiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-2" />}
-            AI Mentor
-          </Button>
         </div>
       </header>
 
@@ -172,37 +149,6 @@ export function StudyGroupView({ group, onBack }: { group: StudyGroup, onBack: (
                 </div>
               </ScrollArea>
               
-              <AnimatePresence>
-                {aiInsight && (
-                  <motion.div 
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: 20, opacity: 0 }}
-                    className="p-4 bg-indigo-500/10 border-t border-indigo-500/20 relative group"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="p-1.5 bg-indigo-500/20 rounded-lg text-indigo-500">
-                        <Sparkles className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-[10px] font-black uppercase text-indigo-500 tracking-widest mb-1">Circle Insight</p>
-                        <div className="text-xs text-muted-foreground leading-relaxed prose prose-invert max-w-none">
-                          <Markdown>{aiInsight}</Markdown>
-                        </div>
-                      </div>
-                    </div>
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="absolute top-2 right-2 rounded-full h-6 w-6 opacity-0 group-hover:opacity-100"
-                      onClick={() => setAiInsight(null)}
-                    >
-                      <X className="w-3 h-3" />
-                    </Button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
               <form onSubmit={handleSendMessage} className="p-4 bg-secondary/20 border-t border-border/50 flex flex-col gap-2">
                 <div className="flex items-center gap-2 mb-2">
                   <Button 

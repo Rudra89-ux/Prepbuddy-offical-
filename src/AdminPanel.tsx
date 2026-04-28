@@ -9,12 +9,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap, Settings, XCircle, Mic, FileText, Upload, Trophy, ChevronDown, List } from 'lucide-react';
+import { Shield, Plus, Trash2, Users, BookOpen, BarChart3, Loader2, Brain, CheckCircle2, Edit2, GraduationCap, Settings, XCircle, Mic, FileText, Upload, Trophy, ChevronDown, List, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { Question, Subject, QuestionType, Lecture, Quiz, Course, UserProfile, MockTest, Exam, Module } from './types';
 import { storage, ref, uploadBytes, getDownloadURL } from './lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { MarkdownRenderer } from './components/MarkdownRenderer';
+import { AIService } from './services/aiService';
 
 export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const { user, isSubAdmin } = useAuth();
@@ -26,6 +27,7 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
   const [mockTests, setMockTests] = useState<MockTest[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('lectures');
   const [isQuickAddModalOpen, setIsQuickAddModalOpen] = useState(false);
   const [quickAddSource, setQuickAddSource] = useState<'quiz' | 'mock-test' | null>(null);
@@ -494,6 +496,89 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
       handleFirestoreError(error, OperationType.CREATE, 'lectures');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateLectureWithAI = async () => {
+    if (!newL.title) {
+      toast.error("Please enter a title first");
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const data = await AIService.generateAdminLecture(newL.title, 'JEE/NEET');
+      setNewL(prev => ({
+        ...prev,
+        description: data.description,
+        topic: data.topic
+      }));
+      toast.success("AI Generated description and topic!");
+    } catch (error) {
+      toast.error("AI Generation failed");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const generateQuizWithAI = async () => {
+    if (!newQuiz.title || !newQuiz.topic) {
+      toast.error("Please enter a title and topic first");
+      return;
+    }
+    setLoading(true);
+    setAiLoading(true);
+    try {
+      const quizQuestions = await AIService.generateAdminQuiz(newQuiz.topic, 'JEE', 5);
+      
+      const addedIds: string[] = [];
+      for (const q of quizQuestions) {
+        const questionData = {
+          subject: newQuiz.subject,
+          difficulty: 2,
+          text: q.question,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+          explanation: q.explanation,
+          type: 'MCQ',
+          createdAt: serverTimestamp()
+        };
+        const docRef = await addDoc(collection(db, 'questions'), questionData);
+        addedIds.push(docRef.id);
+      }
+      
+      setNewQuiz(prev => ({
+        ...prev,
+        selectedQuestionIds: [...prev.selectedQuestionIds, ...addedIds]
+      }));
+      
+      fetchQuestions();
+      toast.success(`AI Generated ${addedIds.length} questions!`);
+    } catch (error) {
+      toast.error("AI Quiz generation failed");
+    } finally {
+      setLoading(false);
+      setAiLoading(false);
+    }
+  };
+
+  const refineQuestionWithAI = async () => {
+    if (!newQ.text) {
+      toast.error("Please enter question text first");
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const data = await AIService.refineAdminQuestion(newQ.text, newQ.options, newQ.correctAnswer, "JEE/NEET");
+      setNewQ(prev => ({
+        ...prev,
+        text: data.question,
+        explanation: data.explanation
+      }));
+      toast.success("Question refined with AI!");
+    } catch (error) {
+      toast.error("Refinement failed");
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -1089,7 +1174,19 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                 <CardContent>
                   <form onSubmit={handleAddLecture} className="space-y-4">
                     <div className="space-y-2">
-                      <Label className="text-[10px] uppercase">Title</Label>
+                      <div className="flex justify-between items-center">
+                        <Label className="text-[10px] uppercase">Title</Label>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-[8px] uppercase gap-1 text-primary animate-pulse"
+                          onClick={generateLectureWithAI}
+                          disabled={aiLoading}
+                        >
+                          {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Magic
+                        </Button>
+                      </div>
                       <Input value={newL.title} onChange={e => setNewL({...newL, title: e.target.value})} placeholder="Lecture Title" />
                     </div>
                     <div className="space-y-2">
@@ -1206,7 +1303,19 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                 <CardContent>
                   <form onSubmit={handleAddLecture} className="space-y-4">
                     <div className="space-y-2">
-                      <Label className="text-[10px] uppercase">Title</Label>
+                      <div className="flex justify-between items-center">
+                        <Label className="text-[10px] uppercase">Title</Label>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-[8px] uppercase gap-1 text-primary animate-pulse"
+                          onClick={generateLectureWithAI}
+                          disabled={aiLoading}
+                        >
+                          {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Magic
+                        </Button>
+                      </div>
                       <Input value={newL.title} onChange={e => setNewL({...newL, title: e.target.value, type: 'audio'})} placeholder="Discussion Title" />
                     </div>
                     <div className="space-y-2">
@@ -1323,7 +1432,19 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                 <CardContent>
                   <form onSubmit={handleAddLecture} className="space-y-4">
                     <div className="space-y-2">
-                      <Label className="text-[10px] uppercase">Title</Label>
+                      <div className="flex justify-between items-center">
+                        <Label className="text-[10px] uppercase">Title</Label>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-[8px] uppercase gap-1 text-primary animate-pulse"
+                          onClick={generateLectureWithAI}
+                          disabled={aiLoading}
+                        >
+                          {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} AI Magic
+                        </Button>
+                      </div>
                       <Input value={newL.title} onChange={e => setNewL({...newL, title: e.target.value, type: 'pdf'})} placeholder="Note Title" />
                     </div>
                     <div className="space-y-2">
@@ -1480,7 +1601,19 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-[10px] uppercase">Topic</Label>
+                      <div className="flex justify-between items-center">
+                        <Label className="text-[10px] uppercase">Topic</Label>
+                        <Button 
+                          type="button" 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-6 text-[8px] uppercase gap-1 text-primary"
+                          onClick={generateQuizWithAI}
+                          disabled={aiLoading}
+                        >
+                          {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} Generate 5 Qs
+                        </Button>
+                      </div>
                       <Input value={newQuiz.topic} onChange={e => setNewQuiz({...newQuiz, topic: e.target.value})} placeholder="Topic" />
                     </div>
                     <div className="space-y-2">
@@ -2132,6 +2265,16 @@ export default function AdminPanel({ onExit }: { onExit: () => void }) {
                       <div className="flex justify-between items-center">
                         <Label className="text-[10px] uppercase">Question Text</Label>
                         <div className="flex gap-2">
+                          <Button 
+                            type="button" 
+                            variant="ghost" 
+                            size="xs" 
+                            className="h-6 text-[8px] uppercase gap-1 text-primary"
+                            onClick={refineQuestionWithAI}
+                            disabled={aiLoading}
+                          >
+                            {aiLoading ? <Loader2 className="w-2 h-2 animate-spin" /> : <Sparkles className="w-2 h-2" />} AI Refine
+                          </Button>
                           <Button 
                             type="button" 
                             variant="outline" 

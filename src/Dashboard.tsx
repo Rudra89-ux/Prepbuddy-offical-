@@ -19,7 +19,6 @@ import {
   Shield,
   Settings,
   LogOut,
-  Sparkles,
   Users,
   Play,
   Search,
@@ -49,9 +48,8 @@ import { toast } from 'sonner';
 
 import { StudyGroupView } from './components/StudyGroupView';
 import StudyGroups from './components/StudyGroups';
-import AICenter from './components/AICenter';
 
-export type ViewType = 'dashboard' | 'resources' | 'quizzes' | 'courses' | 'modules' | 'mock-tests' | 'history' | 'settings' | 'admin' | 'groups' | 'ai-lab';
+export type ViewType = 'dashboard' | 'resources' | 'quizzes' | 'courses' | 'modules' | 'mock-tests' | 'history' | 'settings' | 'admin' | 'groups';
 
 export default function Dashboard({ 
   onOpenAdmin, 
@@ -611,9 +609,6 @@ export default function Dashboard({
       case 'groups':
         return <StudyGroups />;
 
-      case 'ai-lab':
-        return <AICenter />;
-
       case 'history':
         return (
           <section className="space-y-8">
@@ -768,7 +763,7 @@ export default function Dashboard({
             </div>
 
             {/* Quick Stats */}
-            <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <section className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               <StatCard 
                 icon={<BookOpen className="w-4 h-4 text-primary" />} 
                 label="Resources" 
@@ -786,12 +781,6 @@ export default function Dashboard({
                 label="Study Groups" 
                 value={groups.length} 
                 onClick={() => onViewChange('groups')}
-              />
-              <StatCard 
-                icon={<Sparkles className="w-4 h-4 text-indigo-500" />} 
-                label="AI Lab" 
-                value="New" 
-                onClick={() => onViewChange('ai-lab')}
               />
             </section>
 
@@ -926,12 +915,6 @@ export default function Dashboard({
             label="Groups" 
             active={currentView === 'groups'} 
             onClick={() => onViewChange('groups')}
-          />
-          <NavIcon 
-            icon={<Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-500" />} 
-            label="AI Hub" 
-            active={currentView === 'ai-lab'} 
-            onClick={() => onViewChange('ai-lab')}
           />
           <NavIcon 
             icon={<Trophy className="w-4 h-4 sm:w-5 sm:h-5" />} 

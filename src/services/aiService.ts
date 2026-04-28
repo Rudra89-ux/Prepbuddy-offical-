@@ -49,5 +49,75 @@ export const AIService = {
       console.error("Failed to parse AI challenge", e);
       return [];
     }
+  },
+
+  generateAdminLecture: async (title: string, exam: string) => {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Create a professional lecture description and topic breadcrumb for the topic "${title}" for ${exam} aspirants.
+      Return a description (max 200 chars) and a topic tag.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            description: { type: Type.STRING },
+            topic: { type: Type.STRING }
+          },
+          required: ["description", "topic"]
+        }
+      }
+    });
+    return JSON.parse(response.text);
+  },
+
+  generateAdminQuiz: async (topic: string, exam: string, count: number = 5) => {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Generate ${count} high-difficulty ${exam} questions for the topic: ${topic}. 
+      Include 4 options, the correct answer, and a detailed step-by-step logic.`,
+      config: {
+        tools: [{ googleSearch: {} }],
+        toolConfig: { includeServerSideToolInvocations: true },
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              question: { type: Type.STRING },
+              options: { type: Type.ARRAY, items: { type: Type.STRING } },
+              correctAnswer: { type: Type.STRING },
+              explanation: { type: Type.STRING }
+            },
+            required: ["question", "options", "correctAnswer", "explanation"]
+          }
+        }
+      }
+    });
+    return JSON.parse(response.text);
+  },
+
+  refineAdminQuestion: async (question: string, options: string[], answer: string, exam: string) => {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Refine the following ${exam} question for better clarity, mathematical accuracy, and academic rigour. 
+      Return the refined question text and a professional step-by-step explanation.
+      Question: ${question}
+      Options: ${options.join(', ')}
+      Correct: ${answer}`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            question: { type: Type.STRING },
+            explanation: { type: Type.STRING }
+          },
+          required: ["question", "explanation"]
+        }
+      }
+    });
+    return JSON.parse(response.text);
   }
 };

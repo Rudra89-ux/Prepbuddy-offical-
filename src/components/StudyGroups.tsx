@@ -18,7 +18,6 @@ import {
   MoreVertical,
   X,
   Search,
-  Sparkles,
   ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -232,16 +231,16 @@ export default function StudyGroups() {
             </CardContent>
           </Card>
 
-          <Card className="premium-card bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border-indigo-500/20">
+          <Card className="premium-card bg-gradient-to-br from-green-500/10 to-blue-500/10 border-green-500/20">
             <CardContent className="p-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-indigo-500/20 rounded-xl">
-                  <Sparkles className="w-5 h-5 text-indigo-500" />
+                <div className="p-2 bg-green-500/20 rounded-xl">
+                  <Users className="w-5 h-5 text-green-500" />
                 </div>
-                <h4 className="font-black text-xs uppercase tracking-widest text-indigo-500">Group AI Mentor</h4>
+                <h4 className="font-black text-xs uppercase tracking-widest text-green-500">Collaborative Learning</h4>
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
-                Connect with aspirants to unlock group-level insights, collective performance tracking, and collaborative doubt-solving powered by Gemini.
+                Connect with aspirants to share notes, solve doubts together, and climb the leaderboard. Group study increases retention and motivation.
               </p>
             </CardContent>
           </Card>
