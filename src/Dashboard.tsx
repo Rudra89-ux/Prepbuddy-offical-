@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
-import { collection, query, onSnapshot, limit, orderBy, where, updateDoc, doc } from 'firebase/firestore';
+import { Timestamp, arrayUnion, arrayRemove, serverTimestamp, collection, query, onSnapshot, limit, orderBy, where, updateDoc, doc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Lecture, Quiz, Course, QuizAttempt, MockTest, Module, StudyGroup } from './types';
+import { StudyReminder, Lecture, Quiz, Course, QuizAttempt, MockTest, Module, StudyGroup } from './types';
 import { 
   BookOpen, 
   Brain, 
@@ -41,7 +41,11 @@ import {
   FileText,
   List,
   ChevronDown,
-  ExternalLink
+  ExternalLink,
+  Bell,
+  Calendar,
+  Plus,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -88,6 +92,57 @@ export default function Dashboard({
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [resourceTab, setResourceTab] = useState<'video' | 'audio' | 'pdf'>('video');
+
+  const [reminderForm, setReminderForm] = useState({
+    title: '',
+    type: 'topic' as 'topic' | 'mock-test',
+    date: '',
+    time: ''
+  });
+  const [isAddingReminder, setIsAddingReminder] = useState(false);
+
+  const handleAddReminder = async () => {
+    if (!reminderForm.title || !reminderForm.date || !reminderForm.time || !profile) {
+      toast.error("Please fill all reminder fields");
+      return;
+    }
+
+    setIsAddingReminder(true);
+    try {
+      const scheduledDate = new Date(`${reminderForm.date}T${reminderForm.time}`);
+      const newReminder: StudyReminder = {
+        id: Math.random().toString(36).substr(2, 9),
+        title: reminderForm.title,
+        type: reminderForm.type,
+        scheduledFor: Timestamp.fromDate(scheduledDate),
+        isCompleted: false,
+        createdAt: serverTimestamp() // Need to import serverTimestamp
+      };
+
+      await updateDoc(doc(db, 'users', profile.uid), {
+        reminders: arrayUnion(newReminder)
+      });
+
+      setReminderForm({ title: '', type: 'topic', date: '', time: '' });
+      toast.success("Reminder set successfully!");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
+    } finally {
+      setIsAddingReminder(false);
+    }
+  };
+
+  const handleDeleteReminder = async (reminder: StudyReminder) => {
+    if (!profile) return;
+    try {
+      await updateDoc(doc(db, 'users', profile.uid), {
+        reminders: arrayRemove(reminder)
+      });
+      toast.success("Reminder removed");
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
+    }
+  };
 
   useEffect(() => {
     const qL = query(collection(db, 'lectures'), orderBy('createdAt', 'desc'), limit(100));
@@ -743,6 +798,103 @@ export default function Dashboard({
                 <LogOut className="w-4 h-4 mr-2" />
                 Sign Out
               </Button>
+
+              {/* Study Reminders Section */}
+              <div className="pt-6 space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-indigo-500/10 rounded-xl">
+                    <Bell className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-widest">Study Reminders</h3>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Never miss a goal</p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-3xl bg-secondary/30 border border-border space-y-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[9px] uppercase font-bold text-muted-foreground ml-1">Type</Label>
+                      <select 
+                        value={reminderForm.type}
+                        onChange={e => setReminderForm({...reminderForm, type: e.target.value as any})}
+                        className="w-full h-10 rounded-xl bg-background border border-border px-3 text-xs font-medium focus:ring-1 focus:ring-primary outline-none"
+                      >
+                        <option value="topic">Topic</option>
+                        <option value="mock-test">Mock Test</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[9px] uppercase font-bold text-muted-foreground ml-1">Title</Label>
+                      <Input 
+                        placeholder="e.g. Organic Chem"
+                        value={reminderForm.title}
+                        onChange={e => setReminderForm({...reminderForm, title: e.target.value})}
+                        className="h-10 rounded-xl"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-[9px] uppercase font-bold text-muted-foreground ml-1">Date</Label>
+                      <Input 
+                        type="date"
+                        value={reminderForm.date}
+                        onChange={e => setReminderForm({...reminderForm, date: e.target.value})}
+                        className="h-10 rounded-xl"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[9px] uppercase font-bold text-muted-foreground ml-1">Time</Label>
+                      <Input 
+                        type="time"
+                        value={reminderForm.time}
+                        onChange={e => setReminderForm({...reminderForm, time: e.target.value})}
+                        className="h-10 rounded-xl"
+                      />
+                    </div>
+                  </div>
+                  <Button 
+                    className="w-full h-10 rounded-xl bg-indigo-500 hover:bg-indigo-600 font-bold text-xs uppercase"
+                    onClick={handleAddReminder}
+                    disabled={isAddingReminder}
+                  >
+                    {isAddingReminder ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                    Add Reminder
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {profile.reminders && profile.reminders.length > 0 ? (
+                    profile.reminders.sort((a,b) => a.scheduledFor.toMillis() - b.scheduledFor.toMillis()).map(reminder => (
+                      <div key={reminder.id} className="p-3 rounded-2xl bg-background border border-border flex items-center gap-3 group">
+                        <div className={`p-2 rounded-lg ${reminder.type === 'topic' ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                          {reminder.type === 'topic' ? <BookOpen className="w-4 h-4" /> : <Trophy className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="text-xs font-bold truncate">{reminder.title}</h4>
+                          <div className="flex items-center gap-2 text-[9px] text-muted-foreground font-medium uppercase tracking-widest">
+                            <Calendar className="w-3 h-3" />
+                            {reminder.scheduledFor.toDate().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </div>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="w-8 h-8 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:bg-red-500/10"
+                          onClick={() => handleDeleteReminder(reminder)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-8 text-center border border-dashed border-border rounded-3xl">
+                      <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest">No active reminders</p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </section>
         );

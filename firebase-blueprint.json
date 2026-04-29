@@ -13,7 +13,21 @@
         "isSubscribed": { "type": "boolean" },
         "createdAt": { "type": "string", "format": "date-time" },
         "lastActive": { "type": "string", "format": "date-time" },
-        "completedLectures": { "type": "array", "items": { "type": "string" } }
+        "completedLectures": { "type": "array", "items": { "type": "string" } },
+        "reminders": { 
+          "type": "array", 
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string", "enum": ["topic", "mock-test"] },
+              "title": { "type": "string" },
+              "scheduledFor": { "type": "string", "format": "date-time" },
+              "isCompleted": { "type": "boolean" },
+              "createdAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
       },
       "required": ["uid", "email", "exam", "isSubscribed"]
     },

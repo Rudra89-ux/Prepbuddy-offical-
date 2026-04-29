@@ -2,6 +2,15 @@ export type Exam = 'JEE' | 'NEET';
 export type Subject = 'Physics' | 'Chemistry' | 'Maths' | 'Biology' | 'Botany' | 'Zoology';
 export type QuestionType = 'MCQ' | 'Numerical';
 
+export interface StudyReminder {
+  id: string;
+  type: 'topic' | 'mock-test';
+  title: string;
+  scheduledFor: any; // Timestamp
+  isCompleted: boolean;
+  createdAt: any;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;
@@ -15,6 +24,7 @@ export interface UserProfile {
   createdAt: any;
   lastActive: any;
   completedResources: string[];
+  reminders?: StudyReminder[];
 }
 
 export interface Question {
